@@ -1,0 +1,22 @@
+services:
+  fastapi-service:
+    build:
+      context: ./fastapi-service
+      dockerfile: Dockerfile
+    container_name: hybrid-ai-fastapi
+    ports:
+      - "8000:8000"
+    environment:
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      OLLAMA_FAST_MODEL: "qwen2.5:3b"
+      OLLAMA_SMART_MODEL: "qwen2.5:3b"
+      OLLAMA_TIMEOUT: "60"
+      DEBUG: "false"
+      LOG_LEVEL: "INFO"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+networks:                   
+  default:
+    name: hybrid-ai-network
