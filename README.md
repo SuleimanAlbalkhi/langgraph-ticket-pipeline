@@ -12,9 +12,17 @@
 ![n8n](https://img.shields.io/badge/n8n-Workflow-EA4B71?logo=n8n&logoColor=white)
 
 ---
-<img width="1412" height="814" alt="Screenshot 2026-06-04 171827" src="https://github.com/user-attachments/assets/5ced1206-e15c-40b0-920e-795b3a0194d0" />
-<img width="1919" height="1030" alt="Screenshot 2026-06-04 171420" src="https://github.com/user-attachments/assets/e59047b8-b118-444c-a19d-b378f8b2205a" />
+## Demo
+
+### n8n Workflow with risk-based routing
 <img width="1917" height="906" alt="Screenshot 2026-06-04 171248" src="https://github.com/user-attachments/assets/43e1e8c1-325e-4a0e-ba96-e83bc4cde8ce" />
+
+### FastAPI response on a high-risk ticket
+<img width="1412" height="814" alt="Screenshot 2026-06-04 171827" src="https://github.com/user-attachments/assets/5ced1206-e15c-40b0-920e-795b3a0194d0" />
+
+### Containerized services
+<img width="1919" height="1030" alt="Screenshot 2026-06-04 171420" src="https://github.com/user-attachments/assets/e59047b8-b118-444c-a19d-b378f8b2205a" />
+
 ---
 ## The Problem
 
