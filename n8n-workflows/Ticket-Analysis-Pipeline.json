@@ -1,0 +1,270 @@
+{
+  "name": "Ticket Analysis Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ticket",
+        "responseMode": "lastNode",
+        "options": {
+          "responseCode": {
+            "values": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "7869297d-ac5e-4979-ab77-2e94ea62dce6",
+      "name": "Webhook",
+      "webhookId": "77a611ad-dbaa-448f-a225-d36d10409da8"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fastapi-service:8000/analyze",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {},
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"ticket_id\": \"{{ $json.body.ticket_id }}\",\n  \"raw_text\": \"{{ $json.body.raw_text }}\",\n  \"source\": \"{{ $json.body.source }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        240,
+        0
+      ],
+      "id": "82cdcf17-88e2-4db4-9ed3-d7d8f9a35953",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.risk_flag }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    },
+                    "id": "7da68ed2-7a8b-47a5-a5d8-e2c262ecdfe9"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Escalation"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "2cb53fe3-24b0-4d06-b549-0ce344a38b30",
+                    "leftValue": "={{ $json.risk_flag }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "false",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Normal"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        0
+      ],
+      "id": "03938100-71b0-4fc5-9c7d-76d4b111cf6a",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b66260da-cf82-4074-af23-9d41297a8464",
+              "name": "action",
+              "value": "escalate_to_manager",
+              "type": "string"
+            },
+            {
+              "id": "71f5a597-0bd2-4abc-9d33-f3f4fd3b90f2",
+              "name": "channel",
+              "value": "slack-eskalation",
+              "type": "string"
+            },
+            {
+              "id": "5ffe6bb2-d7e6-4ba3-820e-116dfd76fba1",
+              "name": "message",
+              "value": "=Hochrisiko-Ticket {{ $json.ticket_id }}: {{ $json.risk_reason }}",
+              "type": "string"
+            },
+            {
+              "id": "5be8fe61-cb79-4348-8848-1ec3d3edf468",
+              "name": "urgency",
+              "value": "={{ $json.urgency }}",
+              "type": "string"
+            },
+            {
+              "id": "8bf607d1-831d-4e44-828d-e7e0c3a58cf9",
+              "name": "ticket_id",
+              "value": "={{ $json.ticket_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        656,
+        -96
+      ],
+      "id": "912ff6ca-9026-4cf0-aefd-ef26d5ec22f6",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b94887d5-b6f4-4e82-8aac-1a6ee059c90f",
+              "name": "action",
+              "value": "create_notion_entry",
+              "type": "string"
+            },
+            {
+              "id": "f13a9147-38f7-4f6a-946f-11f579b850b5",
+              "name": "database",
+              "value": "support-tickets",
+              "type": "string"
+            },
+            {
+              "id": "fe82554a-fc0d-4363-8e4c-751a9dfa37ad",
+              "name": "title",
+              "value": "=[{{ $json.category }}] Ticket {{ $json.ticket_id }}",
+              "type": "string"
+            },
+            {
+              "id": "c05a6246-450d-4a83-a891-cd1d2200abf2",
+              "name": "summary",
+              "value": "={{ $json.summary }}",
+              "type": "string"
+            },
+            {
+              "id": "7900ad98-b25a-400f-a886-e66747e0cf9a",
+              "name": "priority",
+              "value": "={{ $json.urgency }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        656,
+        96
+      ],
+      "id": "37d8d04f-19da-4095-9e8e-2b30c8968381",
+      "name": "Edit Fields1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "ce5ed5e9-a1cf-4b30-8598-d0a8c99ce22c",
+  "meta": {
+    "instanceId": "b0de1e91b2abd7ad8b592c40bb8740a65e723265df0af3fa0d08a5bad2c5dbfa"
+  },
+  "nodeGroups": [],
+  "id": "7N03timjz8tD7PDX",
+  "tags": []
+}
