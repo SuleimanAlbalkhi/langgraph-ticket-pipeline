@@ -80,12 +80,12 @@ the operational layer and the reasoning layer.
 
 - **3-Node LangGraph Pipeline** with typed state and conditional edges
 - **Self-Correction Loop** via retry counter — extractor re-runs with augmented prompt if output is empty
-- **2-Stage Risk Guard** — fast keyword pre-filter avoids LLM cost on routine tickets (~70% reduction)
+- **2-Stage Risk Guard** — fast keyword pre-filter avoids the expensive LLM call on routine tickets
 - **Defense-in-Depth Validation** — Pydantic input contracts + enum coercion + async timeouts
 - **Singleton LLM Connections** — no per-request setup overhead
 - **Structured Logging** in every node — observable, debuggable, MLOps-ready
 - **On-Premise Inference** — qwen2.5:3b via Ollama, no data leaves the host
-- **Container-Native** — multi-stage Docker build, healthcheck-instrumented, docker-compose orchestrated
+- **Container-Native** — single-stage, layer-cached Docker build, healthcheck-instrumented, docker-compose orchestrated
 - **Hybrid Architecture** — n8n exposes business logic visually for non-developers
 
 ---
@@ -188,7 +188,7 @@ hybrid-ai-orchestrator/
 │   ├── Dockerfile               Multi-layer cached build
 │   └── requirements.txt
 ├── n8n-workflows/
-│   └── ticket_processor.json    Exported workflow (versioned)
+│   └── Ticket-Analysis-Pipeline.json   Exported workflow (versioned)
 ├── docker-compose.yml           FastAPI + n8n + shared network + volumes
 └── README.md
 ```
@@ -215,7 +215,7 @@ is a one-line config change.
 
 ### Why a separate Risk-Guard node with two stages?
 
-LLM inference is expensive. ~70% of tickets are routine and require no deep risk evaluation.
+LLM inference is expensive. A large share of tickets are routine and require no deep risk evaluation.
 A keyword pre-filter (`Anwalt`, `Klage`, `Eskalation`, …) catches the obvious cases without
 LLM cost; only ambiguous cases trigger the LLM. This is a hot-path optimization pattern
 that scales linearly with traffic.
@@ -232,6 +232,15 @@ reach the response. This is defense-in-depth applied to AI systems.
 GPU passthrough into Docker on Windows requires WSL 2 + nvidia-container-toolkit + driver
 alignment. For a portfolio project this is overkill. On Linux production, Ollama would be
 containerized with `--gpus all`.
+
+### Why are the Slack/Notion delivery nodes stubbed?
+
+The n8n workflow contains the full routing logic — a `Switch` splits on `risk_flag` into an
+**Escalation** and a **Normal** path, and each path assembles the action payload. The final
+delivery (posting to Slack, writing to Notion) is intentionally left as `Set` nodes in this
+public repo: wiring real delivery requires live credentials, which must never be committed.
+The actual integration runs locally with secrets kept out of version control. Swapping a `Set`
+node for a real Slack/Notion node is a drop-in change in the n8n editor — no code change.
 
 ---
 
