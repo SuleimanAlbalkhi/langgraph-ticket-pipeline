@@ -1,5 +1,6 @@
 from langchain_ollama import ChatOllama
 from app.config import get_settings
+from app.models.ticket import _NULL_LIKE
 import json
 import logging
 import time
@@ -8,9 +9,6 @@ import re
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
-
-# String-Werte die in echtes None überführt werden sollen
-_NULL_LIKE = {"null", "none", "n/a", "na", "-", "", "kein", "keiner", "unbekannt"}
 
 
 def _normalize_value(value):
