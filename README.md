@@ -79,6 +79,7 @@ the operational layer and the reasoning layer.
 ## Key Features
 
 - **3-Node LangGraph Pipeline** with typed state and conditional edges
+- **Self-Consistency Confidence** — classifier runs N=3 times; the majority vote sets the label, the agreement rate is a *measured* confidence (replaces the LLM's unreliable self-reported score)
 - **Self-Correction Loop** via retry counter — extractor re-runs with augmented prompt if output is empty
 - **2-Stage Risk Guard** — fast keyword pre-filter avoids the expensive LLM call on routine tickets
 - **Defense-in-Depth Validation** — Pydantic input contracts + enum coercion + async timeouts
@@ -154,7 +155,8 @@ Processes a single ticket end-to-end through the LangGraph pipeline.
     "error_code": null,
     "invoice_number": "RE-2026-0481",
     "amount": "1.247,80 EUR",
-    "deadline_mentioned": true
+    "deadline_mentioned": true,
+    "deadline": "innerhalb von 14 Tagen"
   },
   "risk_flag": true,
   "risk_reason": "rechtliche Drohungen, Eskalationsabsicht",
@@ -162,7 +164,14 @@ Processes a single ticket end-to-end through the LangGraph pipeline.
 }
 ```
 
-Average latency: **~25 seconds** (limited by GPU — RTX 1050 Ti reference).
+> `confidence_score` is **not** a model self-assessment. It is the agreement
+> rate of N=3 independent classifier runs (self-consistency): `1.0` means all
+> three runs agreed, `0.67` means one of three diverged. `deadline` is filled by
+> the LLM, with a regex post-processor as a deterministic fallback.
+
+Typical latency: **~25–35 seconds** on the reference machine (RTX 1050 Ti, qwen2.5:3b).
+The classifier's 3 self-consistency runs add only ~6 s because its output is tiny;
+the extractor dominates. On multi-GPU hardware the runs parallelize to near-zero overhead.
 
 ### `GET /health`
 
