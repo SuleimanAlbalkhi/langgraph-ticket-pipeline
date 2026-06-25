@@ -4,7 +4,9 @@ from app.models.ticket import TicketInput, TicketAnalysis
 from app.config import get_settings
 import logging
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+# force=True entfernt bereits vorhandene Handler (z.B. von Uvicorn) am
+# Root-Logger, bevor unserer gesetzt wird — verhindert doppelte Log-Zeilen.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", force=True)
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
