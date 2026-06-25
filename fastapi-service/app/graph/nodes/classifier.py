@@ -5,6 +5,7 @@ import json
 import logging
 import time
 import asyncio
+from collections import Counter
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -12,11 +13,18 @@ settings = get_settings()
 _VALID_CATEGORIES = {c.value for c in TicketCategory}
 _VALID_URGENCIES  = {u.value for u in UrgencyLevel}
 
-# Singleton — einmal beim Import gebaut, danach in allen Requests wiederverwendet
+# Self-Consistency: Anzahl der Klassifizierungs-Läufe pro Ticket.
+# Das Mehrheitsvotum bestimmt category + urgency, die Übereinstimmungsrate
+# liefert die Confidence. Ersetzt die alte, unzuverlässige LLM-Selbstauskunft.
+N_VOTES = 3
+
+# Singleton — temperature > 0 ist hier Voraussetzung, nicht Bug:
+# bei temperature=0 wären alle N Läufe identisch und die Confidence immer
+# trügerisch 1.0. Etwas Streuung lässt echte Unsicherheit erst sichtbar werden.
 _llm = ChatOllama(
     model=settings.ollama_fast_model,
     base_url=settings.ollama_base_url,
-    temperature=0,
+    temperature=0.5,
     format="json",
     timeout=settings.ollama_timeout,
 )
@@ -30,11 +38,31 @@ def _coerce_urgency(value) -> str:
     return value if value in _VALID_URGENCIES else UrgencyLevel.MEDIUM.value
 
 
-def _coerce_confidence(value) -> float:
+async def _classify_once(prompt: str, run_idx: int):
+    """Ein einzelner Klassifizierungs-Lauf. Gibt (category, urgency) zurück
+    oder None, wenn der Lauf fehlschlägt (Timeout / kaputtes JSON)."""
     try:
-        return max(0.0, min(1.0, float(value)))
-    except (TypeError, ValueError):
-        return 0.0
+        response = await asyncio.wait_for(
+            _llm.ainvoke(prompt),
+            timeout=settings.ollama_timeout,
+        )
+    except asyncio.TimeoutError:
+        logger.error("[Node 1 - Classifier] Lauf %d: TIMEOUT", run_idx)
+        return None
+    except Exception as e:
+        logger.error("[Node 1 - Classifier] Lauf %d: LLM-Fehler: %s", run_idx, e)
+        return None
+
+    try:
+        data = json.loads(response.content)
+        return (
+            _coerce_category(data.get("category")),
+            _coerce_urgency(data.get("urgency")),
+        )
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("[Node 1 - Classifier] Lauf %d: JSON-Parse fehlgeschlagen | raw=%r",
+                       run_idx, response.content[:200])
+        return None
 
 
 async def classify_node(state: dict) -> dict:
@@ -64,34 +92,41 @@ TEXT:
 JSON-Format:
 {{
   "category": "<eine der vier Kategorien>",
-  "urgency": "<eine der vier Stufen>",
-  "confidence_score": <0.0 bis 1.0>
+  "urgency": "<eine der vier Stufen>"
 }}"""
 
-    try:
-        response = await asyncio.wait_for(
-            _llm.ainvoke(prompt),
-            timeout=settings.ollama_timeout,
-        )
-    except asyncio.TimeoutError:
-        logger.error("[Node 1 - Classifier] TIMEOUT nach %.0fs", settings.ollama_timeout)
-        return {**state, "category": "unknown", "urgency": "medium", "confidence_score": 0.0}
-    except Exception as e:
-        logger.error("[Node 1 - Classifier] LLM-Fehler nach %.1fs: %s", time.time() - t0, e)
+    # Self-Consistency: N Läufe gleichzeitig abfeuern.
+    # Auf einer einzelnen GPU serialisiert Ollama sie (queued); auf Produktions-
+    # Hardware mit mehreren GPUs laufen sie echt parallel -> nahezu kostenlos.
+    results = await asyncio.gather(
+        *[_classify_once(prompt, i + 1) for i in range(N_VOTES)]
+    )
+    votes = [r for r in results if r is not None]
+    elapsed = time.time() - t0
+
+    # Kein einziger Lauf erfolgreich -> sicherer Fallback
+    if not votes:
+        logger.warning("[Node 1 - Classifier] alle %d Läufe fehlgeschlagen | %.1fs",
+                       N_VOTES, elapsed)
         return {**state, "category": "unknown", "urgency": "medium", "confidence_score": 0.0}
 
-    logger.info("[Node 1 - Classifier] LLM antwortete in %.1fs", time.time() - t0)
+    # Mehrheitsvotum — unabhängig für category und urgency
+    category_votes = Counter(c for c, _ in votes)
+    urgency_votes  = Counter(u for _, u in votes)
+    category, category_count = category_votes.most_common(1)[0]
+    urgency, _ = urgency_votes.most_common(1)[0]
 
-    try:
-        data = json.loads(response.content)
-        logger.info("[Node 1 - Classifier] DONE | category=%s urgency=%s confidence=%.2f",
-                    data.get("category"), data.get("urgency"), data.get("confidence_score", 0))
-        return {
-            **state,
-            "category":         _coerce_category(data.get("category")),
-            "urgency":          _coerce_urgency(data.get("urgency")),
-            "confidence_score": _coerce_confidence(data.get("confidence_score", 0.5)),
-        }
-    except (json.JSONDecodeError, ValueError):
-        logger.warning("[Node 1 - Classifier] JSON-Parse fehlgeschlagen | raw=%r", response.content[:200])
-        return {**state, "category": "unknown", "urgency": "medium", "confidence_score": 0.0}
+    # Confidence = Stimmenanteil der Gewinner-Kategorie an ALLEN Läufen.
+    # Fehlgeschlagene Läufe senken die Confidence bewusst mit.
+    confidence = category_count / N_VOTES
+
+    logger.info("[Node 1 - Classifier] DONE | category=%s urgency=%s confidence=%.2f "
+                "(votes=%s) | %.1fs",
+                category, urgency, confidence, dict(category_votes), elapsed)
+
+    return {
+        **state,
+        "category":         category,
+        "urgency":          urgency,
+        "confidence_score": confidence,
+    }

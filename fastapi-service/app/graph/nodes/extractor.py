@@ -21,9 +21,6 @@ def _normalize_value(value):
     if isinstance(value, str):
         if value.strip().lower() in _NULL_LIKE:
             return None
-        # Platzhalter wie "Name oder null" filtern
-        if " oder null" in value.lower():
-            return None
     return value
 
 
