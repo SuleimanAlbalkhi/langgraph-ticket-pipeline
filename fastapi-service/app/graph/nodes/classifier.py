@@ -10,6 +10,7 @@ import time
 from langchain_ollama import ChatOllama
 
 from app.config import get_settings
+from app.graph.prompt_safety import fence_user_input
 from app.models.ticket import TicketCategory, UrgencyLevel
 
 if TYPE_CHECKING:
@@ -55,7 +56,7 @@ DRINGLICHKEITS-REGELN (strikt anwenden):
 Antworte AUSSCHLIESSLICH mit einem JSON-Objekt. Keine Erklärungen davor oder danach.
 
 TEXT:
-\"\"\"{raw_text}\"\"\"
+{fence_user_input(raw_text)}
 
 JSON-Format:
 {{

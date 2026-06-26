@@ -9,6 +9,7 @@ import time
 from langchain_ollama import ChatOllama
 
 from app.config import get_settings
+from app.graph.prompt_safety import fence_user_input
 
 if TYPE_CHECKING:
     from app.graph.orchestrator import GraphState
@@ -47,7 +48,8 @@ def _build_prompt(state: GraphState) -> str:
     return f"""Du bist ein Risikobewertungs-System für Support-Tickets.
 Prüfe ob der folgende Text kritische Inhalte enthält.
 
-Text: "{state['raw_text']}"
+Text:
+{fence_user_input(state['raw_text'])}
 Kategorie: {state['category']}
 Dringlichkeit: {state['urgency']}
 

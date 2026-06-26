@@ -10,6 +10,7 @@ import time
 from langchain_ollama import ChatOllama
 
 from app.config import get_settings
+from app.graph.prompt_safety import fence_user_input
 from app.models.ticket import _NULL_LIKE
 
 if TYPE_CHECKING:
@@ -119,7 +120,7 @@ Antwort:
   "extracted_data": {{"customer_name": null, "product": null, "error_code": null, "invoice_number": null, "amount": null, "deadline_mentioned": false, "deadline": null}}}}
 
 {retry_hint}JETZT der echte Text:
-\"\"\"{raw_text}\"\"\"
+{fence_user_input(raw_text)}
 
 Antworte AUSSCHLIESSLICH mit dem JSON:
 {{
