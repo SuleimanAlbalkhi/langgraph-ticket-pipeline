@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     debug: bool    = False
     log_level: str = "INFO"
 
+    # Überlastschutz — globale Begrenzung gleichzeitiger Analysen schützt den
+    # GPU-Engpass. Bekommt ein Request nach acquire_timeout keinen freien Slot,
+    # antwortet der Service mit 503 (Load-Shedding) statt Requests aufzustauen.
+    max_concurrent_analyses: int     = 4
+    semaphore_acquire_timeout: float = 2.0  # Sekunden
+
 
 @lru_cache()
 def get_settings() -> Settings:

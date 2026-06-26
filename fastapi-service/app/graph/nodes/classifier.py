@@ -91,8 +91,10 @@ async def _classify_once(prompt: str, run_idx: int) -> tuple[str, str] | None:
             UrgencyLevel.coerce(data.get("urgency")).value,
         )
     except (json.JSONDecodeError, ValueError):
-        logger.warning("[Node 1 - Classifier] Lauf %d: JSON-Parse fehlgeschlagen | raw=%r",
-                       run_idx, response.content[:200])
+        # Bewusst KEIN roher Modell-Output im Log: er ist aus dem Ticket abgeleitet
+        # und kann personenbezogene Daten enthalten (DSGVO). Nur die Länge als Hinweis.
+        logger.warning("[Node 1 - Classifier] Lauf %d: JSON-Parse fehlgeschlagen | len=%d",
+                       run_idx, len(response.content or ""))
         return None
 
 

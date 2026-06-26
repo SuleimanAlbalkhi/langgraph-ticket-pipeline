@@ -10,7 +10,12 @@ COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-COPY app/ ./app/
+# Non-root: ein unprivilegierter User führt den Prozess aus. Falls der Service je
+# kompromittiert wird (z.B. über eine Dependency-Lücke), ist der Angreifer NICHT
+# root im Container — begrenzt den möglichen Schaden (Defense in Depth).
+RUN useradd --create-home --uid 1000 appuser
+COPY --chown=appuser:appuser app/ ./app/
+USER appuser
 
 EXPOSE 8000
 

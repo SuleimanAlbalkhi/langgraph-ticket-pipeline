@@ -4,8 +4,11 @@ services:
       context: ./fastapi-service
       dockerfile: Dockerfile
     container_name: hybrid-ai-fastapi
+    # Nur an localhost gebunden statt 0.0.0.0 — der Service ist damit NICHT aus dem
+    # LAN/WLAN erreichbar, nur vom eigenen Rechner. n8n erreicht ihn unabhängig davon
+    # intern über das Docker-Netz (http://fastapi-service:8000).
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       OLLAMA_BASE_URL: "http://host.docker.internal:11434"
       OLLAMA_FAST_MODEL: "qwen2.5:3b"
@@ -13,6 +16,7 @@ services:
       OLLAMA_TIMEOUT: "60"
       DEBUG: "false"
       LOG_LEVEL: "INFO"
+      MAX_CONCURRENT_ANALYSES: "4"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
@@ -20,8 +24,9 @@ services:
   n8n:
     image: n8nio/n8n:latest
     container_name: hybrid-ai-n8n
+    # Editor ebenfalls nur lokal erreichbar (nicht aus dem LAN).
     ports:
-      - "5678:5678"
+      - "127.0.0.1:5678:5678"
     environment:
       N8N_HOST: "localhost"
       N8N_PORT: "5678"

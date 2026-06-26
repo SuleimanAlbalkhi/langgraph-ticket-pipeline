@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import asyncio
 import logging
 import uuid  # für generische Fehler-IDs
 
@@ -24,6 +25,7 @@ async def lifespan(app: FastAPI):
     logger.info("Smart-Modell: %s", settings.ollama_smart_model)
     logger.info("Ollama URL:   %s", settings.ollama_base_url)
     logger.info("LLM-Timeout:  %.0fs", settings.ollama_timeout)
+    logger.info("Max. parallele Analysen: %d", settings.max_concurrent_analyses)
     yield
     logger.info("Service wird beendet.")
 
@@ -34,6 +36,11 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+
+# Globaler Überlastschutz: begrenzt gleichzeitig laufende Analysen und damit die
+# Last auf dem GPU-Engpass. Module-Level => geteilt über alle Requests des Prozesses.
+_analyze_semaphore = asyncio.Semaphore(settings.max_concurrent_analyses)
 
 
 def _error_response(error_id: str) -> dict[str, str]:
@@ -55,6 +62,23 @@ async def analyze_ticket(ticket: TicketInput) -> TicketAnalysis:
     # /analyze-Aufruf gebaut, nicht schon beim Service-Start.
     from app.graph.orchestrator import run_graph
 
+    # Überlastschutz: Slot VOR dem try holen. Da HTTPException von Exception erbt,
+    # würde ein 503 sonst vom generischen "except Exception" zu einem 500 verfälscht.
+    # Ohne freien Slot nach acquire_timeout wird die Last abgewiesen (503).
+    try:
+        await asyncio.wait_for(
+            _analyze_semaphore.acquire(),
+            timeout=settings.semaphore_acquire_timeout,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("[Overload] /analyze abgewiesen — alle %d Slots belegt.",
+                       settings.max_concurrent_analyses)
+        raise HTTPException(
+            status_code=503,
+            detail="Service ausgelastet, bitte später erneut.",
+            headers={"Retry-After": "5"},
+        )
+
     try:
         return await run_graph(ticket)
     except Exception as exc:
@@ -67,3 +91,6 @@ async def analyze_ticket(ticket: TicketInput) -> TicketAnalysis:
             error_id, exc, exc_info=True,
         )
         raise HTTPException(status_code=500, detail=_error_response(error_id))
+    finally:
+        # Slot nur freigeben, wenn er auch geholt wurde (acquire war erfolgreich).
+        _analyze_semaphore.release()

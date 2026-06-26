@@ -46,9 +46,12 @@ class UrgencyLevel(str, Enum):
 # Input: Was n8n an unsere Service schickt
 
 class TicketInput(BaseModel):
-    ticket_id: str = Field(..., description="Eindeutige Ticket-ID")
-    raw_text: str  = Field(..., min_length=10, description="Der rohe, unstrukturierte Text des Tickets")
-    source: str    = Field(default="email", description="Herkunft: email, web_form, api")
+    # max_length-Schranken: harte Obergrenze gegen DoS-/Kostenmissbrauch. Ohne sie
+    # landet beliebig langer Text ungefiltert in bis zu 6 LLM-Calls pro Request
+    # (3x Classifier-Votes + bis zu 2x Extractor + 1x Risk-Guard) und sättigt die GPU.
+    ticket_id: str = Field(..., max_length=128, description="Eindeutige Ticket-ID")
+    raw_text: str  = Field(..., min_length=10, max_length=10_000, description="Der rohe, unstrukturierte Text des Tickets")
+    source: str    = Field(default="email", max_length=64, description="Herkunft: email, web_form, api")
 
 
 # Strukturierte Felder, die der Extractor (Node 2) aus dem Text zieht.
