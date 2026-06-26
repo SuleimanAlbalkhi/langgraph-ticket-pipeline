@@ -1,9 +1,13 @@
-from fastapi import FastAPI, HTTPException
+from __future__ import annotations
+
 from contextlib import asynccontextmanager
-from app.models.ticket import TicketInput, TicketAnalysis
-from app.config import get_settings
 import logging
-import uuid  # <-- Hinzugefügt für generische Fehler-IDs
+import uuid  # für generische Fehler-IDs
+
+from fastapi import FastAPI, HTTPException
+
+from app.config import get_settings
+from app.models.ticket import TicketInput, TicketAnalysis
 
 # force=True entfernt bereits vorhandene Handler (z.B. von Uvicorn) am
 # Root-Logger, bevor unserer gesetzt wird — verhindert doppelte Log-Zeilen.
@@ -11,6 +15,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", force=
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -22,6 +27,7 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("Service wird beendet.")
 
+
 app = FastAPI(
     title=settings.app_name,
     description="n8n-gesteuerter LangGraph-Microservice für Ticket-Verarbeitung",
@@ -29,34 +35,35 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+def _error_response(error_id: str) -> dict[str, str]:
+    """Sichere, generische Client-Antwort — Details bleiben im Server-Log."""
+    return {
+        "message": "Ein interner Serverfehler ist aufgetreten.",
+        "error_id": error_id,
+    }
+
+
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, str]:
     return {"status": "ok", "service": settings.app_name}
 
+
 @app.post("/analyze", response_model=TicketAnalysis)
-async def analyze_ticket(ticket: TicketInput):
+async def analyze_ticket(ticket: TicketInput) -> TicketAnalysis:
+    # Lazy-Import: der Graph (inkl. ChatOllama-Singletons) wird erst beim ersten
+    # /analyze-Aufruf gebaut, nicht schon beim Service-Start.
+    from app.graph.orchestrator import run_graph
+
     try:
-        from app.graph.orchestrator import run_graph
-        result = await run_graph(ticket)
-        return result
-    except Exception as e:
-        # 1. Eindeutige Tracking-ID für diesen spezifischen Fehler generieren
+        return await run_graph(ticket)
+    except Exception as exc:
+        # Eindeutige Tracking-ID generieren, Fehler ausführlich serverseitig
+        # loggen (exc_info=True schreibt den kompletten Stacktrace), dem Client
+        # aber nur die generische Meldung + ID zurückgeben.
         error_id = str(uuid.uuid4())
-        
-        # 2. Den Fehler ausführlich auf dem Server loggen
-        # exc_info=True ist wichtig, da es den kompletten Stacktrace in die Logs schreibt!
         logger.error(
-            "Fehler bei der Ticket-Analyse (Error-ID: %s): %s", 
-            error_id, 
-            str(e), 
-            exc_info=True
+            "Fehler bei der Ticket-Analyse (Error-ID: %s): %s",
+            error_id, exc, exc_info=True,
         )
-        
-        # 3. Dem Client nur die sichere, generische Meldung + ID zurückgeben
-        raise HTTPException(
-            status_code=500, 
-            detail={
-                "message": "Ein interner Serverfehler ist aufgetreten.",
-                "error_id": error_id
-            }
-        )
+        raise HTTPException(status_code=500, detail=_error_response(error_id))
