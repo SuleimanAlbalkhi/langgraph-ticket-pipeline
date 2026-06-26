@@ -1,3 +1,10 @@
+# Gemeinsame Log-Rotation für alle Services (verhindert volllaufende Platte).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   fastapi-service:
     build:
@@ -16,13 +23,15 @@ services:
       OLLAMA_TIMEOUT: "60"
       DEBUG: "false"
       LOG_LEVEL: "INFO"
-      MAX_CONCURRENT_ANALYSES: "4"
+      MAX_CONCURRENT_ANALYSES: "${MAX_CONCURRENT_ANALYSES:-4}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
+    logging: *default-logging
 
   n8n:
-    image: n8nio/n8n:latest
+    # Feste Version statt :latest — reproduzierbar, kein Bruch durch automatische Updates.
+    image: n8nio/n8n:2.23.3
     container_name: hybrid-ai-n8n
     # Editor ebenfalls nur lokal erreichbar (nicht aus dem LAN).
     ports:
@@ -34,12 +43,25 @@ services:
       WEBHOOK_URL: "http://localhost:5678/"
       GENERIC_TIMEZONE: "Europe/Berlin"
       N8N_SECURE_COOKIE: "false"
+      # Verschlüsselungsschlüssel für gespeicherte Credentials — aus .env (gitignored),
+      # damit er stabil/reproduzierbar ist statt zufällig im Volume generiert zu werden.
+      N8N_ENCRYPTION_KEY: "${N8N_ENCRYPTION_KEY:?Bitte N8N_ENCRYPTION_KEY in .env setzen}"
+      # Ausführungshistorie automatisch beschneiden (Platte schonen + DSGVO: PII nicht ewig halten).
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "168"   # Stunden = 7 Tage
     volumes:
       - n8n_data:/home/node/.n8n
       - ./n8n-workflows:/workflows
     depends_on:
       - fastapi-service
     restart: unless-stopped
+    # Healthcheck: macht in `docker ps` sichtbar, ob n8n wirklich bereit ist.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *default-logging
 
 volumes:
   n8n_data:
