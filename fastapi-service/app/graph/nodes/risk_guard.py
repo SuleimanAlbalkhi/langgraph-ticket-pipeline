@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 import asyncio
-import json
 import logging
 import time
 
-from langchain_ollama import ChatOllama
-
 from app.config import get_settings
+from app.graph.llm_utils import build_json_llm, parse_json_object
 from app.graph.prompt_safety import fence_user_input
 
 if TYPE_CHECKING:
@@ -23,13 +21,7 @@ RISK_KEYWORDS = (
 )
 
 # Singleton — einmal beim Import gebaut
-_llm = ChatOllama(
-    model=settings.ollama_smart_model,
-    base_url=settings.ollama_base_url,
-    temperature=0,
-    format="json",
-    timeout=settings.ollama_timeout,
-)
+_llm = build_json_llm(settings.ollama_smart_model, temperature=0)
 
 
 def _keyword_floor(state: GraphState, keyword_hit: bool) -> GraphState:
@@ -107,12 +99,8 @@ async def risk_guard_node(state: GraphState) -> GraphState:
 
     logger.info("[Node 3 - RiskGuard] LLM antwortete in %.1fs", time.time() - t0)
 
-    try:
-        data = json.loads(response.content)
-        if not isinstance(data, dict):
-            # format="json" garantiert gültiges JSON, aber kein Objekt.
-            raise ValueError("LLM lieferte kein JSON-Objekt")
-    except (json.JSONDecodeError, ValueError):
+    data = parse_json_object(response.content)
+    if data is None:
         logger.warning("[Node 3 - RiskGuard] JSON-Parse fehlgeschlagen")
         return _keyword_floor(state, keyword_hit)
 

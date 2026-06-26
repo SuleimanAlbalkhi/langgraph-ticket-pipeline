@@ -3,13 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from collections import Counter
 import asyncio
-import json
 import logging
 import time
 
-from langchain_ollama import ChatOllama
-
 from app.config import get_settings
+from app.graph.llm_utils import build_json_llm, parse_json_object
 from app.graph.prompt_safety import fence_user_input
 from app.models.ticket import TicketCategory, UrgencyLevel
 
@@ -27,13 +25,7 @@ N_VOTES = 3
 # Singleton — temperature > 0 ist hier Voraussetzung:
 # bei temperature=0 wären alle N Läufe identisch und die Confidence immer
 # trügerisch 1.0. Etwas Streuung lässt echte Unsicherheit erst sichtbar werden.
-_llm = ChatOllama(
-    model=settings.ollama_fast_model,
-    base_url=settings.ollama_base_url,
-    temperature=0.5,
-    format="json",
-    timeout=settings.ollama_timeout,
-)
+_llm = build_json_llm(settings.ollama_fast_model, temperature=0.5)
 
 
 def _build_prompt(raw_text: str) -> str:
@@ -80,23 +72,19 @@ async def _classify_once(prompt: str, run_idx: int) -> tuple[str, str] | None:
         logger.error("[Node 1 - Classifier] Lauf %d: LLM-Fehler: %s", run_idx, exc)
         return None
 
-    try:
-        data = json.loads(response.content)
-        if not isinstance(data, dict):
-            # format="json" garantiert gültiges JSON, aber kein Objekt — eine
-            # Liste/Skalar würde sonst beim .get() ein AttributeError werfen.
-            raise ValueError("LLM lieferte kein JSON-Objekt")
-        # Inter-Node-Coercion: halluzinierte Enum-Werte auf Defaults snappen.
-        return (
-            TicketCategory.coerce(data.get("category")).value,
-            UrgencyLevel.coerce(data.get("urgency")).value,
-        )
-    except (json.JSONDecodeError, ValueError):
+    data = parse_json_object(response.content)
+    if data is None:
         # Bewusst KEIN roher Modell-Output im Log: er ist aus dem Ticket abgeleitet
         # und kann personenbezogene Daten enthalten (DSGVO). Nur die Länge als Hinweis.
         logger.warning("[Node 1 - Classifier] Lauf %d: JSON-Parse fehlgeschlagen | len=%d",
                        run_idx, len(response.content or ""))
         return None
+
+    # Inter-Node-Coercion: halluzinierte Enum-Werte auf Defaults snappen.
+    return (
+        TicketCategory.coerce(data.get("category")).value,
+        UrgencyLevel.coerce(data.get("urgency")).value,
+    )
 
 
 def _majority_vote(votes: list[tuple[str, str]]) -> tuple[str, str, float]:

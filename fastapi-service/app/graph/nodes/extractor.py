@@ -2,14 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 import asyncio
-import json
 import logging
 import re
 import time
 
-from langchain_ollama import ChatOllama
-
 from app.config import get_settings
+from app.graph.llm_utils import build_json_llm, parse_json_object
 from app.graph.prompt_safety import fence_user_input
 from app.models.ticket import _NULL_LIKE
 
@@ -45,13 +43,7 @@ _DEADLINE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 )
 
 # Singleton — einmal beim Import gebaut
-_llm = ChatOllama(
-    model=settings.ollama_fast_model,
-    base_url=settings.ollama_base_url,
-    temperature=0,
-    format="json",
-    timeout=settings.ollama_timeout,
-)
+_llm = build_json_llm(settings.ollama_fast_model, temperature=0)
 
 
 def _normalize_value(value: object) -> object:
@@ -208,12 +200,8 @@ async def extract_node(state: GraphState) -> GraphState:
 
     logger.info("[Node 2 - Extractor] LLM antwortete in %.1fs", time.time() - t0)
 
-    try:
-        data = json.loads(response.content)
-        if not isinstance(data, dict):
-            # format="json" garantiert gültiges JSON, aber kein Objekt.
-            raise ValueError("LLM lieferte kein JSON-Objekt")
-    except (json.JSONDecodeError, ValueError):
+    data = parse_json_object(response.content)
+    if data is None:
         logger.warning("[Node 2 - Extractor] JSON-Parse fehlgeschlagen")
         return _failure_state(state, SUMMARY_FAILED, retry_count)
 
