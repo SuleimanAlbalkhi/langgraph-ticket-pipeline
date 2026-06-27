@@ -23,7 +23,12 @@ class Settings(BaseSettings):
     # Überlastschutz — globale Begrenzung gleichzeitiger Analysen schützt den
     # GPU-Engpass. Bekommt ein Request nach acquire_timeout keinen freien Slot,
     # antwortet der Service mit 503 (Load-Shedding) statt Requests aufzustauen.
-    max_concurrent_analyses: int     = 4
+    #
+    # Default 2 ist auf eine kleine GPU (~4 GB VRAM, qwen2.5:3b) abgestimmt: eine
+    # einzelne Analyse feuert intern bereits bis zu 3 parallele Classifier-Votes,
+    # und der echte Parallelitätsgrad wird ohnehin von OLLAMA_NUM_PARALLEL bestimmt
+    # (hostseitig, da Ollama nicht containerisiert ist). Auf größerer Hardware erhöhen.
+    max_concurrent_analyses: int     = 2
     semaphore_acquire_timeout: float = 2.0  # Sekunden
 
 

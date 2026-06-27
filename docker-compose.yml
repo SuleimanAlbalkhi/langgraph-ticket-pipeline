@@ -23,7 +23,13 @@ services:
       OLLAMA_TIMEOUT: "60"
       DEBUG: "false"
       LOG_LEVEL: "INFO"
-      MAX_CONCURRENT_ANALYSES: "${MAX_CONCURRENT_ANALYSES:-4}"
+      # App-seitige Drossel (Load-Shedding). Default 2 ist auf ~4 GB VRAM abgestimmt,
+      # da eine einzelne Analyse intern schon bis zu 3 parallele LLM-Votes auslöst.
+      MAX_CONCURRENT_ANALYSES: "${MAX_CONCURRENT_ANALYSES:-2}"
+      # Hinweis: Der tatsächliche GPU-Parallelitätsgrad wird von OLLAMA_NUM_PARALLEL
+      # gesteuert — das ist KEINE Variable dieses Containers, sondern gehört auf den
+      # HOST, wo `ollama serve` läuft (Ollama ist hier nicht containerisiert).
+      # Einstellung siehe .env.example.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
