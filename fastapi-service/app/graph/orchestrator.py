@@ -67,7 +67,7 @@ def _build_app():
 
 
 def get_app():
-    """Compile the graph once and reuse it across requests."""
+    """Erstellt das Diagramm einmal und verwendet es für alle Anfragen wieder."""
     global _compiled_app
     if _compiled_app is None:
         _compiled_app = _build_app()
