@@ -258,7 +258,19 @@ node for a real Slack/Notion node is a drop-in change in the n8n editor — no c
 **Current** — production-ready single-instance deployment with full E2E flow:
 Webhook → Classification → Extraction → Risk Guard → Routing → Action.
 
-**Planned**
+**Next** — the gaps I consider most important, in this order
+
+- [ ] Test suite (pytest) for the deterministic core: router decisions, enum coercion,
+      deadline regex, keyword floor. None of these need a live model — a mock is enough.
+- [ ] Labeled evaluation set (~50–100 tickets) + an accuracy script. There is currently
+      no measured number for classification quality; self-consistency is an uncertainty
+      signal, not an accuracy metric.
+- [ ] CI: lint, tests and Docker build on every push
+- [ ] Retry + error workflow in n8n — a `503` from the API currently fails the execution
+      and the ticket is lost
+- [ ] `/ready` endpoint that actually checks Ollama connectivity (`/health` is static today)
+
+**Later**
 
 - [ ] Prometheus metrics endpoint + Grafana dashboard
 - [ ] Async job pattern for long-running analyses (>30 s)
