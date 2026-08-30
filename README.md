@@ -255,8 +255,9 @@ node for a real Slack/Notion node is a drop-in change in the n8n editor — no c
 
 ## Status & Roadmap
 
-**Current** — production-ready single-instance deployment with full E2E flow:
+**Current** — working single-instance deployment with the full E2E flow:
 Webhook → Classification → Extraction → Risk Guard → Routing → Action.
+Not production-ready — the gaps are named under **Next** below, not hidden.
 
 **Next** — the gaps I consider most important, in this order
 
