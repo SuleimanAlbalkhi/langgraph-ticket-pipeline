@@ -91,19 +91,23 @@ STRIKTE REGELN:
 2. Wenn ein Wert nicht im Text steht: gib JSON null zurück (NIE den String "null", NIE "n/a", NIE Platzhalter).
 3. Die folgenden Beispiele sind NUR Format-Vorlage — übernimm KEINE Namen, Nummern oder Beträge daraus.
 4. Verwechsle nicht: Rechnungsnummer ist KEIN Fehlercode.
-5. summary: 1-2 deutsche Sätze, sachlich. Eine etwaige Frist gerne miterwähnen.
+5. customer_name: der Name der ABSENDENDEN PERSON aus Anrede oder Grußformel —
+   niemals der Firmenname, niemals der Empfänger. Steht keine Person im Text: null.
+6. summary: 1-2 deutsche Sätze, sachlich. Eine etwaige Frist gerne miterwähnen.
+   Steht eine absendende Person im Text, nenne sie am Satzanfang.
 
-BEISPIEL technical_support:
-Text: "Mein Drucker Modell <PRODUKT> zeigt Error <CODE> beim Start."
+BEISPIEL technical_support (mit Absender):
+Text: "Mein Drucker Modell <PRODUKT> zeigt Error <CODE> beim Start.
+Viele Grüße, <NAME>, <ABTEILUNG>, <FIRMA>"
 Antwort:
-{{"summary": "Drucker <PRODUKT> zeigt Fehler <CODE> beim Start.",
-  "extracted_data": {{"customer_name": null, "product": "<PRODUKT>", "error_code": "<CODE>", "invoice_number": null, "amount": null, "deadline_mentioned": false, "deadline": null}}}}
+{{"summary": "<NAME> meldet, dass Drucker <PRODUKT> beim Start Fehler <CODE> zeigt.",
+  "extracted_data": {{"customer_name": "<NAME>", "product": "<PRODUKT>", "error_code": "<CODE>", "invoice_number": null, "amount": null, "deadline_mentioned": false, "deadline": null}}}}
 
-BEISPIEL billing_dispute:
-Text: "Ich beanstande Rechnung <NUMMER> über <BETRAG>, bitte stornieren."
+BEISPIEL billing_dispute (Rechnung UND Produkt im selben Ticket):
+Text: "Ich beanstande Rechnung <NUMMER> über <BETRAG> für das Gerät <PRODUKT>, bitte stornieren."
 Antwort:
-{{"summary": "Beanstandung der Rechnung <NUMMER> über <BETRAG> mit Stornierungswunsch.",
-  "extracted_data": {{"customer_name": null, "product": null, "error_code": null, "invoice_number": "<NUMMER>", "amount": "<BETRAG>", "deadline_mentioned": false, "deadline": null}}}}
+{{"summary": "Beanstandung der Rechnung <NUMMER> über <BETRAG> für <PRODUKT> mit Stornierungswunsch.",
+  "extracted_data": {{"customer_name": null, "product": "<PRODUKT>", "error_code": null, "invoice_number": "<NUMMER>", "amount": "<BETRAG>", "deadline_mentioned": false, "deadline": null}}}}
 
 BEISPIEL general_inquiry:
 Text: "Wann ist der nächste Newsletter geplant? Vielen Dank."
