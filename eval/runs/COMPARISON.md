@@ -1,6 +1,8 @@
 # Vergleich aller Eval-Läufe
 
-Eine Zeile pro Lauf, sortiert nach Startzeit. Fehlgeschlagene/fehlende Tickets sind aus den Metriken ausgeschlossen (Spalte „ausgewertet / fehlgeschl.“). Details je Lauf in `eval/runs/<lauf>/RESULTS.md`.
+Eine Zeile pro Lauf, sortiert nach Startzeit, getrennt nach Ticket-Datei. Spalte „Commit“ = Stand des App-Codes im gemessenen Image. Fehlgeschlagene/fehlende Tickets sind aus den Metriken ausgeschlossen (Spalte „ausgewertet / fehlgeschl.“). Details je Lauf in `eval/runs/<lauf>/RESULTS.md`.
+
+## Dev-Set (`eval/tickets.jsonl`)
 
 | Lauf | Datum | Commit | Notiz | ausgewertet / fehlgeschl. | Kategorie | Urgency | Risk Recall | Risk Precision | Risk FN | Risk FP | Name richtig | Name erfunden | Konfidenz richtig / falsch | Fallbacks | Latenz Median / p95 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -16,3 +18,10 @@ Eine Zeile pro Lauf, sortiert nach Startzeit. Fehlgeschlagene/fehlende Tickets s
 | e5-keywords | 2026-10-30 | `fa1ae69` | E5: Keyword-Hygiene - unzumutbar/skandal raus, klage nicht in beklage (Basis e3 27dd315) | 50 / 0 | 42 von 50 (84 %) | 26 von 50 (52 %) | 9 von 11 (82 %) | 9 von 10 (90 %) | EVAL-014, EVAL-046 | EVAL-021 | 23 von 25 (92 %) | 2 von 25 (8 %) | 1.00 / 1.00 | 0 | 17.1 / 21.9 s |
 | e6e7-names | 2026-10-30 | `2d80c5c` | E6+E7: customer_name ohne Organisationen, Wortgrenzen, snap to text (Schwelle 0.85); Basis e5 2d80c5c | 50 / 0 | 42 von 50 (84 %) | 26 von 50 (52 %) | 9 von 11 (82 %) | 9 von 10 (90 %) | EVAL-014, EVAL-046 | EVAL-021 | 25 von 25 (100 %) | 0 von 25 (0 %) | 1.00 / 1.00 | 0 | 17.1 / 21.8 s |
 | e10-risk-split | 2026-10-30 | `0bcbf8f` | e10: Risk-Guard mit zwei engen Ja/Nein-Fragen (Drohung, Gefahr) bei allen Tickets, ohne urgency; Basis 0bcbf8f | 50 / 0 | 42 von 50 (84 %) | 25 von 50 (50 %) | 7 von 11 (64 %) | 7 von 7 (100 %) | EVAL-014, EVAL-025, EVAL-031, EVAL-045 | — | 25 von 25 (100 %) | 0 von 25 (0 %) | 1.00 / 1.00 | 0 | 17.0 / 20.5 s |
+
+## Holdout (`eval/holdout/tickets.jsonl`)
+
+| Lauf | Datum | Commit | Notiz | ausgewertet / fehlgeschl. | Kategorie | Urgency | Risk Recall | Risk Precision | Risk FN | Risk FP | Name richtig | Name erfunden | Konfidenz richtig / falsch | Fallbacks | Latenz Median / p95 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| holdout-baseline | 2026-10-30 | `da59602` | Holdout-Schlusslauf: App-Code Baseline da59602 (git worktree) | 29 / 1 | 23 von 29 (79 %) | 15 von 29 (52 %) | 7 von 7 (100 %) | 7 von 9 (78 %) | — | HOLD-007, HOLD-015 | 12 von 14 (86 %) | 0 von 15 (0 %) | 1.00 / 1.00 | 0 | 21.0 / 25.6 s |
+| holdout-final | 2026-10-30 | `0bcbf8f` | Holdout-Schlusslauf: App-Code Gewinnerstand 0bcbf8f | 29 / 1 | 23 von 29 (79 %) | 14 von 29 (48 %) | 7 von 7 (100 %) | 7 von 9 (78 %) | — | HOLD-007, HOLD-015 | 12 von 14 (86 %) | 0 von 15 (0 %) | 1.00 / 1.00 | 0 | 16.8 / 20.6 s |

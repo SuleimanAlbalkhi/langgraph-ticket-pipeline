@@ -1,0 +1,14 @@
+{
+  "run_name": "holdout-baseline",
+  "note": "Holdout-Schlusslauf: App-Code Baseline da59602 (git worktree)",
+  "started_at": "2026-10-30T21:58:38+00:00",
+  "finished_at": "2026-10-30T22:09:18+00:00",
+  "model": "qwen2.5:3b",
+  "hardware": "GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM",
+  "git_commit": "97ab451c39bf74c483256c1e8a3d3a56d7c0d8a7",
+  "code_commit": "da5960258ea4e09b80cbaf3c5a3853011b77a94d",
+  "tickets_path": "eval/holdout/tickets.jsonl",
+  "image_id": "sha256:6ed7049ce996e9e878f3cdce05328b9955fa661bcbe0c50d068043d849063d42",
+  "image_created": "2026-10-30T21:58:21+00:00",
+  "n_tickets": 30
+}

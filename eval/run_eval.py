@@ -59,9 +59,13 @@ def _parse_ts(value: str) -> datetime:
     return datetime.fromisoformat(value)
 
 
-def _app_changed_at() -> datetime:
+def _app_changed_at(code_commit: str | None = None) -> datetime:
     """Zeitpunkt der letzten Änderung an fastapi-service/app/: letzter Commit ODER,
-    falls neuer, die jüngste uncommittete Datei (Experimente laufen vor dem Commit)."""
+    falls neuer, die jüngste uncommittete Datei (Experimente laufen vor dem Commit).
+    Mit code_commit (Image aus einem anderen Stand, z.B. Baseline per git worktree)
+    zählt nur der letzte App-Commit bis einschließlich dieses Commits."""
+    if code_commit:
+        return _parse_ts(_run(["git", "log", "-1", "--format=%cI", code_commit, "--", str(APP_DIR)]))
     changed = _parse_ts(_run(["git", "log", "-1", "--format=%cI", "--", str(APP_DIR)]))
     dirty = _run(["git", "status", "--porcelain", "--untracked-files=all", "--", str(APP_DIR)])
     for line in dirty.splitlines():
@@ -72,7 +76,7 @@ def _app_changed_at() -> datetime:
     return changed
 
 
-def _check_image() -> dict:
+def _check_image(code_commit: str | None = None) -> dict:
     """Image des laufenden Containers ermitteln; abbrechen, wenn es älter ist als der
     App-Code — sonst misst der Lauf nicht den Code, den er zu messen vorgibt."""
     try:
@@ -82,7 +86,7 @@ def _check_image() -> dict:
         sys.exit(f"docker inspect {CONTAINER} fehlgeschlagen: {exc}")
 
     image_created = _parse_ts(created)
-    app_changed = _app_changed_at()
+    app_changed = _app_changed_at(code_commit)
     if image_created < app_changed:
         sys.exit(
             f"Image ({image_created.isoformat(timespec='seconds')}) ist älter als die letzte Änderung an "
@@ -169,7 +173,15 @@ def main() -> None:
     parser.add_argument("--model", default="qwen2.5:3b",
                         help="nur für die Metadaten; das Modell wählt der Service über seine Config")
     parser.add_argument("--hardware", required=True, help="z. B. 'RTX 3060 12 GB, Ryzen 5 5600X'")
+    parser.add_argument("--tickets", default=str(TICKETS_PATH.relative_to(REPO_DIR).as_posix()),
+                        help="Ticket-Datei relativ zum Repo-Root (Default: eval/tickets.jsonl)")
+    parser.add_argument("--code-commit", default=None,
+                        help="Commit, aus dem das laufende Image gebaut wurde, falls nicht HEAD "
+                             "(z.B. Baseline per git worktree); Image-Prüfung erfolgt dann gegen diesen Stand")
     args = parser.parse_args()
+    tickets_path = REPO_DIR / args.tickets
+    if not tickets_path.exists():
+        sys.exit(f"Ticket-Datei nicht gefunden: {tickets_path}")
 
     run_dir = RUNS_DIR / args.run_name
     results_path = run_dir / "results.jsonl"
@@ -180,14 +192,15 @@ def main() -> None:
     if not args.resume and run_dir.exists():
         sys.exit(f"Lauf {run_dir} existiert bereits. Anderen --run-name wählen oder --resume nutzen.")
 
-    tickets = _load_jsonl(TICKETS_PATH)
+    tickets = _load_jsonl(tickets_path)
     if args.limit is not None:
         tickets = tickets[: args.limit]
 
     skip = _done_ids(results_path) if args.resume else set()
     todo = [t for t in tickets if t["ticket_id"] not in skip]
 
-    image = _check_image()
+    code_commit = _run(["git", "rev-parse", args.code_commit]) if args.code_commit else None
+    image = _check_image(code_commit)
 
     with httpx.Client() as client:
         _check_health(client)
@@ -203,6 +216,8 @@ def main() -> None:
             "model":       args.model,
             "hardware":    args.hardware,
             "git_commit":  _git_commit(),
+            "code_commit": code_commit or _git_commit(),
+            "tickets_path": args.tickets,
             "image_id":    image["image_id"],
             "image_created": image["image_created"],
             "n_tickets":   len(tickets),

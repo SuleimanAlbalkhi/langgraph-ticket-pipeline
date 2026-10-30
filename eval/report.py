@@ -17,7 +17,8 @@ import numpy as np
 from sklearn.metrics import confusion_matrix
 
 EVAL_DIR     = Path(__file__).resolve().parent
-TICKETS_PATH = EVAL_DIR / "tickets.jsonl"
+REPO_DIR     = EVAL_DIR.parent
+DEFAULT_TICKETS = "eval/tickets.jsonl"
 RUNS_DIR     = EVAL_DIR / "runs"
 
 CATEGORIES = ["technical_support", "billing_dispute", "general_inquiry", "unknown"]
@@ -77,14 +78,16 @@ def nearest_level(score: float) -> float:
     return min(CONFIDENCE_LEVELS, key=lambda lvl: abs(lvl - score))
 
 
-def load_run(run_dir: Path) -> tuple[dict, list, list, list]:
+def load_run(run_dir: Path, tickets_rel: str | None = None) -> tuple[dict, list, list, list]:
     """Liest einen Lauf-Ordner. Gibt (meta, ok, failed, missing) zurück;
-    ok = [(ticket, response, result_row)] der erfolgreichen Anfragen."""
-    tickets = {t["ticket_id"]: t for t in _load_jsonl(TICKETS_PATH)}
-    # Bei mehrfachen Zeilen (z. B. nach manuellem Nachlauf) gilt die letzte.
-    results = {r["ticket_id"]: r for r in _load_jsonl(run_dir / "results.jsonl")}
+    ok = [(ticket, response, result_row)] der erfolgreichen Anfragen.
+    Ticket-Datei: tickets_rel > Eintrag in results_meta.json > eval/tickets.jsonl."""
     meta_path = run_dir / "results_meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+    meta["tickets_path"] = tickets_rel or meta.get("tickets_path") or DEFAULT_TICKETS
+    tickets = {t["ticket_id"]: t for t in _load_jsonl(REPO_DIR / meta["tickets_path"])}
+    # Bei mehrfachen Zeilen (z. B. nach manuellem Nachlauf) gilt die letzte.
+    results = {r["ticket_id"]: r for r in _load_jsonl(run_dir / "results.jsonl")}
     meta.setdefault("n_tickets_labeled", len(tickets))
 
     missing = [tid for tid in tickets if tid not in results]
@@ -139,6 +142,9 @@ def compute_metrics(ok: list) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--run", required=True, help="Name des Laufs unter eval/runs/")
+    parser.add_argument("--tickets", default=None,
+                        help="Ticket-Datei relativ zum Repo-Root (Default: aus results_meta.json, "
+                             "sonst eval/tickets.jsonl)")
     args = parser.parse_args()
 
     run_dir = RUNS_DIR / args.run
@@ -146,7 +152,7 @@ def main() -> None:
         sys.exit(f"Kein Lauf gefunden: {run_dir / 'results.jsonl'}")
     report_path = run_dir / "RESULTS.md"
 
-    meta, ok, failed, missing = load_run(run_dir)
+    meta, ok, failed, missing = load_run(run_dir, args.tickets)
     n = len(ok)
 
     out: list[str] = []
@@ -158,8 +164,10 @@ def main() -> None:
         ["Modell", meta.get("model", "?")],
         ["Hardware", meta.get("hardware", "?")],
         ["Commit", f"`{meta.get('git_commit') or '?'}`"],
+        ["App-Code aus Commit", f"`{meta.get('code_commit') or meta.get('git_commit') or '?'}`"],
         ["Docker-Image", f"`{(meta.get('image_id') or '?').removeprefix('sha256:')[:12]}`, "
                          f"gebaut {meta.get('image_created') or '?'}"],
+        ["Ticket-Datei", f"`{meta['tickets_path']}`"],
         ["Notiz", meta.get("note") or "—"],
         ["Testset-Größe", meta["n_tickets_labeled"]],
         ["Ausgewertet", n],

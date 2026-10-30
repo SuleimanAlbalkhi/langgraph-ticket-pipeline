@@ -77,3 +77,27 @@ Offen: EVAL-014/046 (Gesundheitsgefahr ohne Keyword) hängen am Risk-Urteil des 
 - **Entscheidung:** abgelehnt — Recall-Abfall (9 → 7); e1c-signals entfällt damit (war an die Annahme von e10 gebunden).
 - **Grund:** Frage a) war bei allen 50 Tickets false, auch bei klaren Fällen (003 „mein Anwalt prüft Schadenersatz“, 025/031/045). Kein Parse-Fehler: Rohantworten direkt geprüft, sauberes `{"antwort": false}`. Frage b) griff genau einmal (046, richtig). Alle verbliebenen Treffer kommen aus dem Keyword-Floor.
 - **Auffällig:** Gleiches Muster wie e4 — je enger/strenger die Risk-Frage, desto öfter sagt qwen2.5:3b pauschal „nein“; FPs fallen dabei auf 0. 046 wird erstmals erkannt. Das bisherige Risk-Urteil lebt faktisch von der urgency im Prompt.
+
+## Schlusslauf (Holdout)
+Ausdrücklich angeordnet; Stand eingefroren, kein Code-Tuning danach. 30 Holdout-Tickets (`eval/holdout/tickets.jsonl`, 7 mit Risiko), je ein Lauf mit dem App-Code der Baseline (`da59602`, Image aus git worktree) und des Gewinners (`0bcbf8f`).
+
+**Holdout** (29 ausgewertet, HOLD-014 in beiden Läufen HTTP 500 — s. u.)
+
+| | Kategorie | Urgency | Risk Recall | Risk Precision | Name richtig | Name erfunden | Latenz Median / p95 |
+|---|---|---|---|---|---|---|---|
+| holdout-baseline (`da59602`) | 23/29 (79 %) | 15/29 (52 %) | 7/7 (100 %) | 7/9 (78 %) | 12/14 (86 %) | 0/15 | 21.0 / 25.6 s |
+| holdout-final (`0bcbf8f`) | 23/29 (79 %) | 14/29 (48 %) | 7/7 (100 %) | 7/9 (78 %) | 12/14 (86 %) | 0/15 | **16.8 / 20.6 s** |
+
+**Dev-Set zum Vergleich** (50 Tickets; Final = Lauf `e6e7-names`, E9 danach verhaltensneutral ohne Lauf)
+
+| | Kategorie | Urgency | Risk Recall | Risk Precision | Name richtig | Name erfunden | Latenz Median / p95 |
+|---|---|---|---|---|---|---|---|
+| baseline (`da59602`) | 40/50 (80 %) | 20/50 (40 %) | 10/11 (91 %) | 10/13 (77 %) | 23/25 (92 %) | 2/25 | 20.4 / 25.4 s |
+| final (`e6e7-names`) | 42/50 (84 %) | 26/50 (52 %) | 9/11 (82 %) | 9/10 (90 %) | 25/25 (100 %) | 0/25 | 17.1 / 21.8 s |
+
+**Auswertung**
+- **Auf dem Holdout kein Qualitätsgewinn:** Kategorie, Risk und Name identisch; Urgency −1 Ticket (im Rauschband von ±2). Die Dev-Gewinne (Kategorie +2, Urgency +6, Name +2, Precision) übertragen sich nicht messbar — teils, weil die Baseline auf dem Holdout dort schon stark ist (Risk 7/7, 0 erfundene Namen), teils weil die Prompt-Änderungen an den 50 Dev-Tickets entlang bewertet wurden.
+- **Übertragen hat sich die Latenz:** −20 % (Median 21.0 → 16.8 s) durch single-vote, ohne Qualitätsverlust.
+- **Risk-FP HOLD-007, HOLD-015** in beiden Ständen; kein FN.
+- **Gefundener Fehler (nicht behoben, Stand eingefroren):** HOLD-014 nennt zwei Rechnungsnummern; der Extractor liefert `invoice_number` als Liste `['RE-2026-09102', 'RE-2026-09103']`, `ExtractedData` erwartet `str` → `ValidationError` beim Egress → HTTP 500. Betrifft Baseline und Final gleich; die Defense-in-Depth-Validierung fängt Listen in Extraktionsfeldern nicht ab.
+- **Fazit:** Belastbar sind die Latenz-Verbesserung und die robustere Nachbearbeitung (Namen, Keywords, kein toter Retry-Code); die Accuracy-Gewinne aus dem Dev-Set sind auf unabhängigen Daten nicht nachgewiesen.
