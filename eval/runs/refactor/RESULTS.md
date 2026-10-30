@@ -1,11 +1,13 @@
-# Evaluation: Ticket-Analyse-Pipeline
+# Evaluation: Ticket-Analyse-Pipeline — Lauf `refactor`
 
 |  |  |
 |---|---|
 | Datum | 2026-10-30 |
 | Modell | qwen2.5:3b |
 | Hardware | GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM |
-| Commit | `da5960258ea4e09b80cbaf3c5a3853011b77a94d` |
+| Commit | `03db2294999a9f55152d6cd6f8249668853bc72f` |
+| Docker-Image | `3079ad24459e`, gebaut 2026-10-30T17:21:44+00:00 |
+| Notiz | Refactoring B (verhaltensneutral): state.py, invoke_json, prompts/, postprocess.py |
 | Testset-Größe | 50 |
 | Ausgewertet | 50 |
 
@@ -49,19 +51,19 @@ Vergleich nach Normalisierung (Kleinschreibung, Whitespace, Titel „Dr.“ opti
 
 | Median | p95 |
 |---|---|
-| 20.4 s | 25.4 s |
+| 21.7 s | 26.2 s |
 
 ## Kalibrierung (confidence_score vs. Kategorie)
 
-- Mittlere Konfidenz bei richtiger Kategorie: **0.99**
-- Mittlere Konfidenz bei falscher Kategorie: **0.97**
+- Mittlere Konfidenz bei richtiger Kategorie: **1.00**
+- Mittlere Konfidenz bei falscher Kategorie: **1.00**
 
 | Konfidenz | richtig | falsch | Anteil richtig |
 |---|---|---|---|
 | 0.00 | 0 | 0 | n/a |
 | 0.33 | 0 | 0 | n/a |
-| 0.67 | 1 | 1 | 50 % |
-| 1.00 | 39 | 9 | 81 % |
+| 0.67 | 0 | 0 | n/a |
+| 1.00 | 40 | 10 | 80 % |
 
 ## Fallback-Antworten
 

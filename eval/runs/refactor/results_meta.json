@@ -1,0 +1,12 @@
+{
+  "run_name": "refactor",
+  "note": "Refactoring B (verhaltensneutral): state.py, invoke_json, prompts/, postprocess.py",
+  "started_at": "2026-10-30T17:22:00+00:00",
+  "finished_at": "2026-10-30T17:39:53+00:00",
+  "model": "qwen2.5:3b",
+  "hardware": "GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM",
+  "git_commit": "03db2294999a9f55152d6cd6f8249668853bc72f",
+  "image_id": "sha256:3079ad24459ec0c00a457f5e4d877c24e175bedff5fc81a9df2f7d9a8a022d22",
+  "image_created": "2026-10-30T17:21:44+00:00",
+  "n_tickets": 50
+}

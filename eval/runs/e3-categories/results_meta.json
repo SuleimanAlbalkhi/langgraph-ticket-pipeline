@@ -1,0 +1,12 @@
+{
+  "run_name": "e3-categories",
+  "note": "E3: Kategorie-Definitionen geschärft (Basis single-vote cb72e55)",
+  "started_at": "2026-10-30T19:48:53+00:00",
+  "finished_at": "2026-10-30T20:02:10+00:00",
+  "model": "qwen2.5:3b",
+  "hardware": "GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM",
+  "git_commit": "996b2d5b07494556d4a089ae6e14d356af7bf533",
+  "image_id": "sha256:165e1a07c845cab91146885f542c6c3025d9519447b3d7ab5840f8a8a0b091b3",
+  "image_created": "2026-10-30T19:47:49+00:00",
+  "n_tickets": 50
+}

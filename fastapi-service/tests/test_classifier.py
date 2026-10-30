@@ -1,7 +1,14 @@
-"""Unit-Tests für das Self-Consistency-Mehrheitsvotum."""
+"""Unit-Tests für das Self-Consistency-Mehrheitsvotum (mit N_VOTES=3 getestet,
+damit die Mehrheitslogik abgesichert bleibt, auch wenn produktiv 1 Lauf genügt)."""
 import pytest
 
+from app.graph.nodes import classifier
 from app.graph.nodes.classifier import _majority_vote
+
+
+@pytest.fixture(autouse=True)
+def three_votes(monkeypatch):
+    monkeypatch.setattr(classifier, "N_VOTES", 3)
 
 
 def test_unanimous_vote_gives_full_confidence():
@@ -22,3 +29,8 @@ def test_failed_runs_lower_confidence():
     category, _, confidence = _majority_vote([("technical_support", "low")])
     assert category == "technical_support"
     assert confidence == pytest.approx(0.33, abs=0.01)
+
+
+def test_single_vote_gives_full_confidence(monkeypatch):
+    monkeypatch.setattr(classifier, "N_VOTES", 1)
+    assert _majority_vote([("general_inquiry", "low")]) == ("general_inquiry", "low", 1.0)

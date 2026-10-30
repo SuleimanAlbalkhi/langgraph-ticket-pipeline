@@ -1,0 +1,12 @@
+{
+  "run_name": "e4-risk-prompt",
+  "note": "E4: Risk-Kriterien 1-4 explizit, Ärger ohne Folge = false, risk_reason als Zitat (Basis e3 27dd315)",
+  "started_at": "2026-10-30T20:28:45+00:00",
+  "finished_at": "2026-10-30T20:42:58+00:00",
+  "model": "qwen2.5:3b",
+  "hardware": "GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM",
+  "git_commit": "27dd31509a79a90b7a4803437c2315f40640781f",
+  "image_id": "sha256:0a340951803cec9daa459b3df934c8838add514e856fb1f0d97c416012d0c5cc",
+  "image_created": "2026-10-30T20:27:16+00:00",
+  "n_tickets": 50
+}

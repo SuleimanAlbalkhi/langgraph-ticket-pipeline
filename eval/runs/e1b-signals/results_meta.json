@@ -1,0 +1,12 @@
+{
+  "run_name": "e1b-signals",
+  "note": "E1b: 6 allgemeine Signale, urgency per Regeln; Basis single-vote (cb72e55); Risk unverändert",
+  "started_at": "2026-10-30T19:29:19+00:00",
+  "finished_at": "2026-10-30T19:46:40+00:00",
+  "model": "qwen2.5:3b",
+  "hardware": "GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM",
+  "git_commit": "cb72e558b61af0dba7c08d6db67c5a824e5a5edd",
+  "image_id": "sha256:f6ff9ddcdaa4d0ec2ec87b2906c01fec3a2c4de9db55e7c0512d82b29c4d3f88",
+  "image_created": "2026-10-30T19:27:55+00:00",
+  "n_tickets": 50
+}

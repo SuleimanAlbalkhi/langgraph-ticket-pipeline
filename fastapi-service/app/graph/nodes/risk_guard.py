@@ -1,24 +1,34 @@
 from __future__ import annotations
 
-import asyncio
 import logging
+import re
 import time
-from typing import TYPE_CHECKING
 
 from app.config import get_settings
-from app.graph.llm_utils import build_json_llm, parse_json_object
-from app.graph.prompt_safety import fence_user_input
-
-if TYPE_CHECKING:
-    from app.graph.orchestrator import GraphState
+from app.graph.llm_utils import LLMFailure, build_json_llm, invoke_json
+from app.graph.prompts.risk_guard import build_prompt
+from app.graph.state import GraphState
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# Harte Risiko-Keywords = Drohungen/Rechtsbezug, keine Ärger-Wörter: "unzumutbar" und
+# "skandal" wurden entfernt (Eval: nur Fehlalarme, z.B. EVAL-027). Teilstring-Match
+# bleibt bewusst, damit Komposita wie "Rechtsanwalt" oder "Sammelklage" treffen.
 RISK_KEYWORDS = (
     "klage", "anwalt", "rechtlich", "betrug",
-    "notfall", "eskalation", "unzumutbar", "skandal",
+    "notfall", "eskalation",
 )
+
+# "klage" nicht in "beklagen"/"Beklagte" — der einzige häufige Fehltreffer des Teilstrings.
+_KEYWORD_PATTERN = re.compile(
+    "|".join(r"(?<!be)klage" if kw == "klage" else re.escape(kw) for kw in RISK_KEYWORDS),
+    re.IGNORECASE,
+)
+
+
+def has_risk_keyword(text: str) -> bool:
+    return _KEYWORD_PATTERN.search(text) is not None
 
 # Singleton — einmal beim Import gebaut
 _llm = build_json_llm(settings.ollama_smart_model, temperature=0)
@@ -33,26 +43,6 @@ def _keyword_floor(state: GraphState, keyword_hit: bool) -> GraphState:
         "risk_flag":   keyword_hit,
         "risk_reason": "Risiko-Schlüsselwort im Text erkannt." if keyword_hit else None,
     }
-
-
-def _build_prompt(state: GraphState) -> str:
-    """Baut den Risikobewertungs-Prompt für ein Ticket."""
-    return f"""Du bist ein Risikobewertungs-System für Support-Tickets.
-Prüfe ob der folgende Text kritische Inhalte enthält.
-
-Text:
-{fence_user_input(state['raw_text'])}
-Kategorie: {state['category']}
-Dringlichkeit: {state['urgency']}
-
-Kritische Inhalte sind: rechtliche Drohungen, Betrugsvorwürfe,
-Sicherheitsrisiken, extrem verärgerte Kunden mit Eskalationsabsicht.
-
-Antworte NUR mit diesem JSON-Format:
-{{
-  "risk_flag": true oder false,
-  "risk_reason": "Begründung wenn risk_flag true, sonst null"
-}}"""
 
 
 def _merge_risk(data: dict, keyword_hit: bool) -> tuple[bool, str | None]:
@@ -75,8 +65,7 @@ async def risk_guard_node(state: GraphState) -> GraphState:
     logger.info("[Node 3 - RiskGuard] START | urgency=%s", state["urgency"])
     t0 = time.time()
 
-    text_lower = state["raw_text"].lower()
-    keyword_hit = any(keyword in text_lower for keyword in RISK_KEYWORDS)
+    keyword_hit = has_risk_keyword(state["raw_text"])
 
     # Kosten-Hotpath: der teure LLM-Call feuert nur bei Keyword-Treffer ODER
     # hoher/kritischer Urgency. Routine-Tickets kürzen direkt ab.
@@ -85,23 +74,9 @@ async def risk_guard_node(state: GraphState) -> GraphState:
                     time.time() - t0)
         return {**state, "risk_flag": False, "risk_reason": None}
 
-    try:
-        response = await asyncio.wait_for(
-            _llm.ainvoke(_build_prompt(state)),
-            timeout=settings.ollama_timeout,
-        )
-    except TimeoutError:
-        logger.error("[Node 3 - RiskGuard] TIMEOUT nach %.0fs", settings.ollama_timeout)
-        return _keyword_floor(state, keyword_hit)
-    except Exception as exc:  # noqa: BLE001 — jeder LLM-Fehler soll in den sicheren Fallback, nicht in einen 500
-        logger.error("[Node 3 - RiskGuard] LLM-Fehler nach %.1fs: %s", time.time() - t0, exc)
-        return _keyword_floor(state, keyword_hit)
-
-    logger.info("[Node 3 - RiskGuard] LLM antwortete in %.1fs", time.time() - t0)
-
-    data = parse_json_object(response.content)
-    if data is None:
-        logger.warning("[Node 3 - RiskGuard] JSON-Parse fehlgeschlagen")
+    prompt = build_prompt(state["raw_text"], state["category"], state["urgency"])
+    data = await invoke_json(_llm, prompt, "Node 3 - RiskGuard")
+    if isinstance(data, LLMFailure):
         return _keyword_floor(state, keyword_hit)
 
     risk_flag, risk_reason = _merge_risk(data, keyword_hit)

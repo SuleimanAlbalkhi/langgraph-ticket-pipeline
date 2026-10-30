@@ -1,0 +1,12 @@
+{
+  "run_name": "e6e7-names",
+  "note": "E6+E7: customer_name ohne Organisationen, Wortgrenzen, snap to text (Schwelle 0.85); Basis e5 2d80c5c",
+  "started_at": "2026-10-30T21:05:23+00:00",
+  "finished_at": "2026-10-30T21:19:36+00:00",
+  "model": "qwen2.5:3b",
+  "hardware": "GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM",
+  "git_commit": "2d80c5c806dafb155ded5d3d3b194fbf229e7824",
+  "image_id": "sha256:cc9c41a80ae35ae0842c68556da0ad2410c2bafaa9985bbd8a7050e1379c1eb1",
+  "image_created": "2026-10-30T21:04:13+00:00",
+  "n_tickets": 50
+}

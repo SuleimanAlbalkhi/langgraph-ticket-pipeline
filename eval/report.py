@@ -1,23 +1,25 @@
-"""Wertet results.jsonl gegen die Labels in tickets.jsonl aus und schreibt eval/RESULTS.md.
+"""Wertet results.jsonl eines Laufs gegen die Labels in tickets.jsonl aus und
+schreibt RESULTS.md in den Lauf-Ordner.
 
 Beispiel (aus dem Repo-Root):
-    python eval/report.py
+    python eval/report.py --run baseline
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import statistics
+import sys
 from pathlib import Path
 
 import numpy as np
 from sklearn.metrics import confusion_matrix
 
 EVAL_DIR     = Path(__file__).resolve().parent
-TICKETS_PATH = EVAL_DIR / "tickets.jsonl"
-RESULTS_PATH = EVAL_DIR / "results.jsonl"
-META_PATH    = EVAL_DIR / "results_meta.json"
-REPORT_PATH  = EVAL_DIR / "RESULTS.md"
+REPO_DIR     = EVAL_DIR.parent
+DEFAULT_TICKETS = "eval/tickets.jsonl"
+RUNS_DIR     = EVAL_DIR / "runs"
 
 CATEGORIES = ["technical_support", "billing_dispute", "general_inquiry", "unknown"]
 URGENCIES  = ["low", "medium", "high", "critical"]
@@ -76,11 +78,17 @@ def nearest_level(score: float) -> float:
     return min(CONFIDENCE_LEVELS, key=lambda lvl: abs(lvl - score))
 
 
-def main() -> None:
-    tickets = {t["ticket_id"]: t for t in _load_jsonl(TICKETS_PATH)}
+def load_run(run_dir: Path, tickets_rel: str | None = None) -> tuple[dict, list, list, list]:
+    """Liest einen Lauf-Ordner. Gibt (meta, ok, failed, missing) zurück;
+    ok = [(ticket, response, result_row)] der erfolgreichen Anfragen.
+    Ticket-Datei: tickets_rel > Eintrag in results_meta.json > eval/tickets.jsonl."""
+    meta_path = run_dir / "results_meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+    meta["tickets_path"] = tickets_rel or meta.get("tickets_path") or DEFAULT_TICKETS
+    tickets = {t["ticket_id"]: t for t in _load_jsonl(REPO_DIR / meta["tickets_path"])}
     # Bei mehrfachen Zeilen (z. B. nach manuellem Nachlauf) gilt die letzte.
-    results = {r["ticket_id"]: r for r in _load_jsonl(RESULTS_PATH)}
-    meta = json.loads(META_PATH.read_text(encoding="utf-8")) if META_PATH.exists() else {}
+    results = {r["ticket_id"]: r for r in _load_jsonl(run_dir / "results.jsonl")}
+    meta.setdefault("n_tickets_labeled", len(tickets))
 
     missing = [tid for tid in tickets if tid not in results]
     failed  = [r for tid, r in results.items()
@@ -88,18 +96,80 @@ def main() -> None:
     failed_ids = {r["ticket_id"] for r in failed}
     ok = [(tickets[tid], r["response"], r) for tid, r in results.items()
           if tid in tickets and tid not in failed_ids]
+    return meta, ok, failed, missing
+
+
+def _got_name(resp: dict) -> str | None:
+    return norm_name((resp.get("extracted_data") or {}).get("customer_name"))
+
+
+def compute_metrics(ok: list) -> dict:
+    """Alle Kennzahlen eines Laufs — genutzt von RESULTS.md und compare.py."""
+    exp_cat = [t["expected_category"] for t, _, _ in ok]
+    got_cat = [str(resp.get("category")) for _, resp, _ in ok]
+    exp_urg = [t["expected_urgency"] for t, _, _ in ok]
+    got_urg = [str(resp.get("urgency")) for _, resp, _ in ok]
+
+    with_name    = [(t, resp) for t, resp, _ in ok if t["expected_customer_name"]]
+    without_name = [(t, resp) for t, resp, _ in ok if not t["expected_customer_name"]]
+    lat = [r["latency_s"] for _, _, r in ok]
+
+    return {
+        "n":        len(ok),
+        "exp_cat":  exp_cat, "got_cat": got_cat,
+        "exp_urg":  exp_urg, "got_urg": got_urg,
+        "cat_hits": sum(e == g for e, g in zip(exp_cat, got_cat)),
+        "urg_hits": sum(e == g for e, g in zip(exp_urg, got_urg)),
+        "tp": [t["ticket_id"] for t, resp, _ in ok if t["expected_risk"] and resp.get("risk_flag")],
+        "fn": [t["ticket_id"] for t, resp, _ in ok if t["expected_risk"] and not resp.get("risk_flag")],
+        "fp": [t["ticket_id"] for t, resp, _ in ok if not t["expected_risk"] and resp.get("risk_flag")],
+        "n_with_name":    len(with_name),
+        "n_without_name": len(without_name),
+        "name_hits": sum(_got_name(resp) == norm_name(t["expected_customer_name"]) for t, resp in with_name),
+        "invented":  [t["ticket_id"] for t, resp in without_name if _got_name(resp)],
+        "lat_median": statistics.median(lat) if lat else None,
+        "lat_p95":    float(np.percentile(lat, 95)) if lat else None,
+        "conf_ok":  [float(resp.get("confidence_score", 0.0)) for (t, resp, _) in ok
+                     if t["expected_category"] == str(resp.get("category"))],
+        "conf_bad": [float(resp.get("confidence_score", 0.0)) for (t, resp, _) in ok
+                     if t["expected_category"] != str(resp.get("category"))],
+        "fallback": [t["ticket_id"] for t, resp, _ in ok
+                     if resp.get("summary") in FALLBACK_SUMMARIES
+                     or float(resp.get("confidence_score", 0.0)) == 0.0],
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--run", required=True, help="Name des Laufs unter eval/runs/")
+    parser.add_argument("--tickets", default=None,
+                        help="Ticket-Datei relativ zum Repo-Root (Default: aus results_meta.json, "
+                             "sonst eval/tickets.jsonl)")
+    args = parser.parse_args()
+
+    run_dir = RUNS_DIR / args.run
+    if not (run_dir / "results.jsonl").exists():
+        sys.exit(f"Kein Lauf gefunden: {run_dir / 'results.jsonl'}")
+    report_path = run_dir / "RESULTS.md"
+
+    meta, ok, failed, missing = load_run(run_dir, args.tickets)
     n = len(ok)
 
     out: list[str] = []
     w = out.append
 
-    w("# Evaluation: Ticket-Analyse-Pipeline\n")
+    w(f"# Evaluation: Ticket-Analyse-Pipeline — Lauf `{args.run}`\n")
     w(md_table(["", ""], [
         ["Datum", (meta.get("started_at") or "?")[:10]],
         ["Modell", meta.get("model", "?")],
         ["Hardware", meta.get("hardware", "?")],
         ["Commit", f"`{meta.get('git_commit') or '?'}`"],
-        ["Testset-Größe", len(tickets)],
+        ["App-Code aus Commit", f"`{meta.get('code_commit') or meta.get('git_commit') or '?'}`"],
+        ["Docker-Image", f"`{(meta.get('image_id') or '?').removeprefix('sha256:')[:12]}`, "
+                         f"gebaut {meta.get('image_created') or '?'}"],
+        ["Ticket-Datei", f"`{meta['tickets_path']}`"],
+        ["Notiz", meta.get("note") or "—"],
+        ["Testset-Größe", meta["n_tickets_labeled"]],
         ["Ausgewertet", n],
     ]))
     w("")
@@ -115,31 +185,24 @@ def main() -> None:
             w(f"Ohne Ergebnis: {', '.join(missing)}\n")
 
     if n == 0:
-        REPORT_PATH.write_text("\n".join(out), encoding="utf-8")
-        print(f"Keine auswertbaren Ergebnisse. {REPORT_PATH} geschrieben.")
+        report_path.write_text("\n".join(out), encoding="utf-8")
+        print(f"Keine auswertbaren Ergebnisse. {report_path} geschrieben.")
         return
 
-    # --- Kategorie & Urgency ---------------------------------------------------
-    exp_cat = [t["expected_category"] for t, _, _ in ok]
-    got_cat = [str(resp.get("category")) for _, resp, _ in ok]
-    exp_urg = [t["expected_urgency"] for t, _, _ in ok]
-    got_urg = [str(resp.get("urgency")) for _, resp, _ in ok]
-    cat_hits = sum(e == g for e, g in zip(exp_cat, got_cat))
-    urg_hits = sum(e == g for e, g in zip(exp_urg, got_urg))
+    m = compute_metrics(ok)
 
+    # --- Kategorie & Urgency ---------------------------------------------------
     w("## Kategorie\n")
-    w(f"Accuracy: **{frac(cat_hits, n)}**\n")
-    w(confusion_table(exp_cat, got_cat, CATEGORIES))
+    w(f"Accuracy: **{frac(m['cat_hits'], n)}**\n")
+    w(confusion_table(m["exp_cat"], m["got_cat"], CATEGORIES))
     w("")
     w("## Urgency\n")
-    w(f"Accuracy: **{frac(urg_hits, n)}**\n")
-    w(confusion_table(exp_urg, got_urg, URGENCIES))
+    w(f"Accuracy: **{frac(m['urg_hits'], n)}**\n")
+    w(confusion_table(m["exp_urg"], m["got_urg"], URGENCIES))
     w("")
 
     # --- Risk ----------------------------------------------------------------
-    tp = [t["ticket_id"] for t, resp, _ in ok if t["expected_risk"] and resp.get("risk_flag")]
-    fn = [t["ticket_id"] for t, resp, _ in ok if t["expected_risk"] and not resp.get("risk_flag")]
-    fp = [t["ticket_id"] for t, resp, _ in ok if not t["expected_risk"] and resp.get("risk_flag")]
+    tp, fn, fp = m["tp"], m["fn"], m["fp"]
     w("## Risk-Flag\n")
     w(f"- Recall: **{frac(len(tp), len(tp) + len(fn))}** der Risiko-Tickets erkannt")
     w(f"- Precision: **{frac(len(tp), len(tp) + len(fp))}** der Eskalationen berechtigt")
@@ -147,33 +210,21 @@ def main() -> None:
     w(f"- False Positives: {', '.join(fp) or '—'}\n")
 
     # --- Kundenname ----------------------------------------------------------
-    with_name    = [(t, resp) for t, resp, _ in ok if t["expected_customer_name"]]
-    without_name = [(t, resp) for t, resp, _ in ok if not t["expected_customer_name"]]
-
-    def got_name(resp: dict) -> str | None:
-        return norm_name((resp.get("extracted_data") or {}).get("customer_name"))
-
-    name_hits = sum(got_name(resp) == norm_name(t["expected_customer_name"]) for t, resp in with_name)
-    invented  = [t["ticket_id"] for t, resp in without_name if got_name(resp)]
+    invented = m["invented"]
     w("## Kundenname\n")
     w("Vergleich nach Normalisierung (Kleinschreibung, Whitespace, Titel „Dr.“ optional).\n")
-    w(f"- Richtig erkannt: **{frac(name_hits, len(with_name))}** (Tickets mit Namen)")
-    w(f"- Erfundener Name: **{frac(len(invented), len(without_name))}** (Tickets ohne Namen)"
+    w(f"- Richtig erkannt: **{frac(m['name_hits'], m['n_with_name'])}** (Tickets mit Namen)")
+    w(f"- Erfundener Name: **{frac(len(invented), m['n_without_name'])}** (Tickets ohne Namen)"
       + (f" — {', '.join(invented)}" if invented else ""))
     w("")
 
     # --- Latenz --------------------------------------------------------------
-    lat = [r["latency_s"] for _, _, r in ok]
     w("## Latenz\n")
-    w(md_table(["Median", "p95"],
-               [[f"{statistics.median(lat):.1f} s", f"{float(np.percentile(lat, 95)):.1f} s"]]))
+    w(md_table(["Median", "p95"], [[f"{m['lat_median']:.1f} s", f"{m['lat_p95']:.1f} s"]]))
     w("")
 
     # --- Kalibrierung --------------------------------------------------------
-    conf_ok  = [float(resp.get("confidence_score", 0.0)) for (t, resp, _) in ok
-                if t["expected_category"] == str(resp.get("category"))]
-    conf_bad = [float(resp.get("confidence_score", 0.0)) for (t, resp, _) in ok
-                if t["expected_category"] != str(resp.get("category"))]
+    conf_ok, conf_bad = m["conf_ok"], m["conf_bad"]
     w("## Kalibrierung (confidence_score vs. Kategorie)\n")
     w(f"- Mittlere Konfidenz bei richtiger Kategorie: "
       f"**{statistics.mean(conf_ok):.2f}**" if conf_ok else "- Richtige Kategorie: keine Fälle")
@@ -188,8 +239,7 @@ def main() -> None:
     w("")
 
     # --- Fallbacks -----------------------------------------------------------
-    fallback = [t["ticket_id"] for t, resp, _ in ok
-                if resp.get("summary") in FALLBACK_SUMMARIES or float(resp.get("confidence_score", 0.0)) == 0.0]
+    fallback = m["fallback"]
     w("## Fallback-Antworten\n")
     w(f"Summary „Extraktion fehlgeschlagen.“ / „Extraktion-Timeout.“ oder confidence_score 0: "
       f"**{frac(len(fallback), n)}**" + (f" — {', '.join(fallback)}" if fallback else ""))
@@ -208,8 +258,8 @@ def main() -> None:
     w(md_table(["Ticket", "erwartet", "erhalten", "Note"], wrong_urg_rows) if wrong_urg_rows else "Keine.")
     w("")
 
-    REPORT_PATH.write_text("\n".join(out), encoding="utf-8")
-    print(f"{REPORT_PATH} geschrieben ({n} ausgewertet, {len(failed)} fehlgeschlagen, {len(missing)} fehlend).")
+    report_path.write_text("\n".join(out), encoding="utf-8")
+    print(f"{report_path} geschrieben ({n} ausgewertet, {len(failed)} fehlgeschlagen, {len(missing)} fehlend).")
 
 
 if __name__ == "__main__":

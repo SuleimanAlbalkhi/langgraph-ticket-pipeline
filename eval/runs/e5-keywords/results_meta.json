@@ -1,0 +1,12 @@
+{
+  "run_name": "e5-keywords",
+  "note": "E5: Keyword-Hygiene - unzumutbar/skandal raus, klage nicht in beklage (Basis e3 27dd315)",
+  "started_at": "2026-10-30T20:45:46+00:00",
+  "finished_at": "2026-10-30T21:00:02+00:00",
+  "model": "qwen2.5:3b",
+  "hardware": "GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM",
+  "git_commit": "fa1ae6936c6bb2859458f5f98966e54efd418cdf",
+  "image_id": "sha256:e3a36d4bd6a97869da1dcbc25f64326ff1b2caefb3af5db64e567ac3a252fb09",
+  "image_created": "2026-10-30T20:44:37+00:00",
+  "n_tickets": 50
+}

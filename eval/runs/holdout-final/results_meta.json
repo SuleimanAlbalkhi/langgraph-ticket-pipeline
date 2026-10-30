@@ -1,0 +1,14 @@
+{
+  "run_name": "holdout-final",
+  "note": "Holdout-Schlusslauf: App-Code Gewinnerstand 0bcbf8f",
+  "started_at": "2026-10-30T22:09:54+00:00",
+  "finished_at": "2026-10-30T22:18:05+00:00",
+  "model": "qwen2.5:3b",
+  "hardware": "GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM",
+  "git_commit": "97ab451c39bf74c483256c1e8a3d3a56d7c0d8a7",
+  "code_commit": "0bcbf8faef96ca8a754d4903d33a0bc4e76b88be",
+  "tickets_path": "eval/holdout/tickets.jsonl",
+  "image_id": "sha256:bbbc9db55be12716b93f6a782166f937030528d201548485c508b494f2e0a33c",
+  "image_created": "2026-10-30T22:09:31+00:00",
+  "n_tickets": 30
+}

@@ -10,6 +10,14 @@ _NULL_LIKE: frozenset[str] = frozenset(
 )
 
 
+def null_if_placeholder(value: object) -> object:
+    """'null'-/Platzhalter-Strings aus LLM-Output zu echtem None. Single Source of
+    Truth — genutzt vom Extractor (Inter-Node) und von ExtractedData (Egress)."""
+    if isinstance(value, str) and value.strip().lower() in _NULL_LIKE:
+        return None
+    return value
+
+
 # Enum: TicketCategory
 class TicketCategory(str, Enum):
     TECHNICAL_SUPPORT = "technical_support"
@@ -77,9 +85,12 @@ class ExtractedData(BaseModel):
                      "invoice_number", "amount", "deadline", mode="before")
     @classmethod
     def _nullify_placeholder(cls, v: object) -> object:
-        if isinstance(v, str) and v.strip().lower() in _NULL_LIKE:
-            return None
-        return v
+        # Listen (z.B. zwei Rechnungsnummern) zu einem String verbinden — sonst
+        # ValidationError beim Egress und HTTP 500 (Holdout-Lauf, HOLD-014).
+        if isinstance(v, (list, tuple)):
+            items = [str(item).strip() for item in v if null_if_placeholder(item) is not None]
+            v = ", ".join(item for item in items if item) or None
+        return null_if_placeholder(v)
 
 
 # Output: was unser LangGraph zurückgibt
