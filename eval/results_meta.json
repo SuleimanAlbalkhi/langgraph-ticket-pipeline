@@ -1,0 +1,8 @@
+{
+  "started_at": "2026-10-30T16:07:28+00:00",
+  "finished_at": "2026-10-30T16:24:28+00:00",
+  "model": "qwen2.5:3b",
+  "hardware": "GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM",
+  "git_commit": "da5960258ea4e09b80cbaf3c5a3853011b77a94d",
+  "n_tickets": 50
+}
