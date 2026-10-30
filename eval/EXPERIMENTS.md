@@ -24,3 +24,10 @@ Abgelehnter Code liegt als Patch unter `eval/patches/<lauf>.patch`.
 - **Entscheidung:** angenommen (keine Metrik schlechter, Latenz −25 %); nach Rückfrage bestätigt. Ab hier stoppt die Warteschlange nur, wenn der Recall gegenüber dem letzten angenommenen Stand *auf* 10/11 fällt.
 - **Grund:** Nur EVAL-025 urgency anders (critical→high, jetzt richtig); Risk und Kategorie je Ticket identisch zu refactor.
 - **Auffällig:** Confidence ist mit 1 Lauf konstant 1.0 — war aber schon vorher ohne Aussagekraft (0.99 vs. 0.97).
+
+## e1b-signals — abgelehnt
+- **Änderung:** E1 mit 6 allgemein formulierten Signalen (Frist, Drohung, Gefahr/Datenverlust, Stillstand, dringend, keine Aktion erwartet), urgency per Regeln; Basis single-vote.
+- **Ergebnis:** Kategorie 39/50 · Urgency **30/50** (+9) · Risk Recall **9/11** · Precision 9/11 · Name 23/25, 2 erfunden · Latenz 20.4 / 25.0 s
+- **Entscheidung:** abgelehnt — Risk-Recall unter 10/11.
+- **Grund:** EVAL-014 nur „frist_genannt“ → high statt critical; Risk-LLM sagt bei „Dringlichkeit: high“ false (wie in e1-signals). FP 021 dafür weg.
+- **Auffällig:** Jetzt Unterschätzung statt Überschätzung — „keine_aktion_erwartet“ feuert nur 3× (14× low→medium). Signal-Ansatz trägt erst, wenn das Risk-Urteil nicht mehr an urgency critical hängt → nach E4 erneut prüfen.
