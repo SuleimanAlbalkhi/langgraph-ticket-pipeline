@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 from app.config import get_settings
@@ -11,10 +12,23 @@ from app.graph.state import GraphState
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# Harte Risiko-Keywords = Drohungen/Rechtsbezug, keine Ärger-Wörter: "unzumutbar" und
+# "skandal" wurden entfernt (Eval: nur Fehlalarme, z.B. EVAL-027). Teilstring-Match
+# bleibt bewusst, damit Komposita wie "Rechtsanwalt" oder "Sammelklage" treffen.
 RISK_KEYWORDS = (
     "klage", "anwalt", "rechtlich", "betrug",
-    "notfall", "eskalation", "unzumutbar", "skandal",
+    "notfall", "eskalation",
 )
+
+# "klage" nicht in "beklagen"/"Beklagte" — der einzige häufige Fehltreffer des Teilstrings.
+_KEYWORD_PATTERN = re.compile(
+    "|".join(r"(?<!be)klage" if kw == "klage" else re.escape(kw) for kw in RISK_KEYWORDS),
+    re.IGNORECASE,
+)
+
+
+def has_risk_keyword(text: str) -> bool:
+    return _KEYWORD_PATTERN.search(text) is not None
 
 # Singleton — einmal beim Import gebaut
 _llm = build_json_llm(settings.ollama_smart_model, temperature=0)
@@ -51,8 +65,7 @@ async def risk_guard_node(state: GraphState) -> GraphState:
     logger.info("[Node 3 - RiskGuard] START | urgency=%s", state["urgency"])
     t0 = time.time()
 
-    text_lower = state["raw_text"].lower()
-    keyword_hit = any(keyword in text_lower for keyword in RISK_KEYWORDS)
+    keyword_hit = has_risk_keyword(state["raw_text"])
 
     # Kosten-Hotpath: der teure LLM-Call feuert nur bei Keyword-Treffer ODER
     # hoher/kritischer Urgency. Routine-Tickets kürzen direkt ab.

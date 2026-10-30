@@ -45,3 +45,10 @@ Abgelehnter Code liegt als Patch unter `eval/patches/<lauf>.patch`.
 - **Entscheidung:** abgelehnt — Recall bricht ein (−4).
 - **Grund:** Das LLM sagt bei allen Tickets ohne Keyword false (014, 025, 031, 045, 046); alle verbliebenen Treffer kommen aus dem Keyword-Floor. Das strenge „NUR dann true“ macht das 3B-Modell übervorsichtig.
 - **Auffällig:** Zitat-Vorgabe wird ignoriert (Reason meist leer bzw. Floor-Text, einmal Kriterium abgeschrieben). FP 021 weg, 006/027 bleiben (Keyword „unzumutbar“).
+
+## e5-keywords — angenommen
+- **Änderung:** „unzumutbar“/„skandal“ aus dem harten Keyword-Floor; „klage“ trifft nicht mehr in „beklage“ (Teilstring für Komposita bleibt); xfail „beklagen“ behoben.
+- **Ergebnis:** Kategorie 42/50 · Urgency 26/50 · Risk Recall **9/11** · Precision **9/10** (FP 006, 027 weg) · Name 23/25, 2 erfunden · Latenz 17.1 / 21.9 s
+- **Entscheidung:** angenommen nach Rückfrage — formal 9/11, der Verlust (014) ist Classifier-Rauschen, nicht E5.
+- **Grund:** Verloren ist nur EVAL-014 (kein Keyword, E5 wirkt dort nicht): der Classifier gab urgency high statt critical, das Risk-LLM sagt dann false. Dieselbe Abweichung (014 high, 005 GI/low) trat mit identischem Classifier-Prompt auch in e4 auf → vermutlich war critical in e3 der Ausreißer.
+- **Auffällig:** Die 10/11 des aktuellen Gewinners e3 hängen an einem instabilen Classifier-Ergebnis für 014 (temperature 0, trotzdem nicht deterministisch).

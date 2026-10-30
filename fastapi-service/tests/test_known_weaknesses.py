@@ -11,12 +11,6 @@ from app.graph.nodes import extractor, risk_guard
 from app.graph.orchestrator import _route_after_extractor
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="Keyword-Match per Teilstring: 'beklage' enthält 'klage'")
-def test_beklagen_is_not_a_lawsuit_keyword():
-    text = "Ich beklage mich über den Service.".lower()
-    assert not any(keyword in text for keyword in risk_guard.RISK_KEYWORDS)
-
-
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="Fristen-Regex kennt 'bis zum <Datum>' nicht")
 def test_bis_zum_datum_is_found():
     assert postprocess.extract_deadline_regex("Bitte zahlen Sie bis zum 25.06.2026.") is not None
