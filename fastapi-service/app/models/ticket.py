@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
 from enum import Enum
+
+from pydantic import BaseModel, Field, field_validator
 
 # String-Werte, die ein LLM gerne statt echtem null liefert — werden zu None.
 _NULL_LIKE: frozenset[str] = frozenset(
@@ -17,7 +18,7 @@ class TicketCategory(str, Enum):
     UNKNOWN           = "unknown"
 
     @classmethod
-    def coerce(cls, value: object) -> "TicketCategory":
+    def coerce(cls, value: object) -> TicketCategory:
         """Snappt einen (ggf. halluzinierten) LLM-Wert auf ein gültiges Enum.
         Single Source of Truth für die Kategorie-Defensive — genutzt vom
         Classifier (Inter-Node) und vom Orchestrator (Egress)."""
@@ -34,7 +35,7 @@ class UrgencyLevel(str, Enum):
     CRITICAL = "critical"
 
     @classmethod
-    def coerce(cls, value: object) -> "UrgencyLevel":
+    def coerce(cls, value: object) -> UrgencyLevel:
         """Snappt einen (ggf. halluzinierten) LLM-Wert auf ein gültiges Enum;
         unbekannte/fehlende Dringlichkeit fällt sicher auf MEDIUM zurück."""
         try:

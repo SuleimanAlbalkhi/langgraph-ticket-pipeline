@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 import asyncio
 import logging
 import uuid  # für generische Fehler-IDs
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 
 from app.config import get_settings
-from app.models.ticket import TicketInput, TicketAnalysis
+from app.models.ticket import TicketAnalysis, TicketInput
 
 # force=True entfernt bereits vorhandene Handler (z.B. von Uvicorn) am
 # Root-Logger, bevor unserer gesetzt wird — verhindert doppelte Log-Zeilen.
@@ -70,7 +70,7 @@ async def analyze_ticket(ticket: TicketInput) -> TicketAnalysis:
             _analyze_semaphore.acquire(),
             timeout=settings.semaphore_acquire_timeout,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("[Overload] /analyze abgewiesen — alle %d Slots belegt.",
                        settings.max_concurrent_analyses)
         raise HTTPException(
@@ -81,15 +81,12 @@ async def analyze_ticket(ticket: TicketInput) -> TicketAnalysis:
 
     try:
         return await run_graph(ticket)
-    except Exception as exc:
+    except Exception:
         # Eindeutige Tracking-ID generieren, Fehler ausführlich serverseitig
-        # loggen (exc_info=True schreibt den kompletten Stacktrace), dem Client
+        # loggen (logger.exception schreibt den kompletten Stacktrace), dem Client
         # aber nur die generische Meldung + ID zurückgeben.
         error_id = str(uuid.uuid4())
-        logger.error(
-            "Fehler bei der Ticket-Analyse (Error-ID: %s): %s",
-            error_id, exc, exc_info=True,
-        )
+        logger.exception("Fehler bei der Ticket-Analyse (Error-ID: %s)", error_id)
         raise HTTPException(status_code=500, detail=_error_response(error_id))
     finally:
         # Slot nur freigeben, wenn er auch geholt wurde (acquire war erfolgreich).

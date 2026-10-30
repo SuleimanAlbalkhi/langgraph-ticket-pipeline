@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 import asyncio
 import logging
 import re
 import time
+from typing import TYPE_CHECKING
 
 from app.config import get_settings
 from app.graph.llm_utils import build_json_llm, parse_json_object
@@ -226,10 +226,10 @@ async def extract_node(state: GraphState) -> GraphState:
             _llm.ainvoke(prompt),
             timeout=settings.ollama_timeout,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.error("[Node 2 - Extractor] TIMEOUT nach %.0fs", settings.ollama_timeout)
         return _failure_state(state, SUMMARY_TIMEOUT, retry_count)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — jeder LLM-Fehler soll in den sicheren Fallback, nicht in einen 500
         logger.error("[Node 2 - Extractor] LLM-Fehler nach %.1fs: %s", time.time() - t0, exc)
         return _failure_state(state, SUMMARY_FAILED, retry_count)
 

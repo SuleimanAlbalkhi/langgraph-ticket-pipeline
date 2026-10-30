@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import TypedDict
 import logging
+from typing import TypedDict
 
 from langgraph.graph import StateGraph
 
 from app.graph.nodes.extractor import HARD_FAILURE_SUMMARIES
-from app.models.ticket import TicketInput, TicketAnalysis, TicketCategory, UrgencyLevel
+from app.models.ticket import TicketAnalysis, TicketCategory, TicketInput, UrgencyLevel
 
 logger = logging.getLogger(__name__)
 
