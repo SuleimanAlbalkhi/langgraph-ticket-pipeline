@@ -1,4 +1,4 @@
-# Evaluation: Ticket-Analyse-Pipeline
+# Evaluation: Ticket-Analyse-Pipeline — Lauf `baseline`
 
 |  |  |
 |---|---|
@@ -6,6 +6,8 @@
 | Modell | qwen2.5:3b |
 | Hardware | GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM |
 | Commit | `da5960258ea4e09b80cbaf3c5a3853011b77a94d` |
+| Docker-Image | `?`, gebaut ? |
+| Notiz | — |
 | Testset-Größe | 50 |
 | Ausgewertet | 50 |
 

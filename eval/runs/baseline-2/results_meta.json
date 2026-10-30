@@ -1,0 +1,10 @@
+{
+  "run_name": "baseline-2",
+  "note": "Rauschmessung: Wiederholung der Baseline ohne Codeänderung",
+  "started_at": "2026-10-30T16:42:30+00:00",
+  "finished_at": "2026-10-30T17:00:24+00:00",
+  "model": "qwen2.5:3b",
+  "hardware": "GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM",
+  "git_commit": "1bfa5b55862194d039a0c756fe4ea999e06d04f6",
+  "n_tickets": 50
+}
