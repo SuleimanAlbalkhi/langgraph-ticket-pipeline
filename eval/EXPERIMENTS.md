@@ -70,3 +70,10 @@ Abgelehnter Code liegt als Patch unter `eval/patches/<lauf>.patch`.
 ## Stand nach der Warteschlange
 Aktueller Gewinner: **e6e7-names** + E9 — Kategorie 42/50 · Urgency 26/50 · Risk Recall 9/11 (014 instabil) · Precision 9/10 · Name 25/25, 0 erfunden · Latenz ~17 s (Baseline: 40 · 20 · 10/11 · 10/13 · 23/25, 2 erfunden · ~21 s).
 Offen: EVAL-014/046 (Gesundheitsgefahr ohne Keyword) hängen am Risk-Urteil des 3B-Modells; jede Prompt-Verschärfung (e4) und jede Urgency-Senkung (e1, e1b, e2) verliert 014. Urgency bleibt die schwächste Metrik.
+
+## e10-risk-split — abgelehnt
+- **Änderung:** Risk-Guard mit zwei engen Ja/Nein-Prompts (a: Drohung mit Recht/Behörde/Verbraucherzentrale/Kündigung oder Betrugsvorwurf; b: Gefahr für Menschen oder Sicherheitsvorfall), ohne Kategorie/Dringlichkeit, bei allen Tickets (kein Urgency-Gate); risk_flag = a ∨ b ∨ Keyword-Floor; Basis 0bcbf8f.
+- **Ergebnis:** Kategorie 42/50 · Urgency 25/50 · Risk Recall **7/11** · Precision 7/7 · Name 25/25, 0 erfunden · Latenz 17.0 / 20.5 s
+- **Entscheidung:** abgelehnt — Recall-Abfall (9 → 7); e1c-signals entfällt damit (war an die Annahme von e10 gebunden).
+- **Grund:** Frage a) war bei allen 50 Tickets false, auch bei klaren Fällen (003 „mein Anwalt prüft Schadenersatz“, 025/031/045). Kein Parse-Fehler: Rohantworten direkt geprüft, sauberes `{"antwort": false}`. Frage b) griff genau einmal (046, richtig). Alle verbliebenen Treffer kommen aus dem Keyword-Floor.
+- **Auffällig:** Gleiches Muster wie e4 — je enger/strenger die Risk-Frage, desto öfter sagt qwen2.5:3b pauschal „nein“; FPs fallen dabei auf 0. 046 wird erstmals erkannt. Das bisherige Risk-Urteil lebt faktisch von der urgency im Prompt.

@@ -1,0 +1,12 @@
+{
+  "run_name": "e10-risk-split",
+  "note": "e10: Risk-Guard mit zwei engen Ja/Nein-Fragen (Drohung, Gefahr) bei allen Tickets, ohne urgency; Basis 0bcbf8f",
+  "started_at": "2026-10-30T21:36:30+00:00",
+  "finished_at": "2026-10-30T21:51:04+00:00",
+  "model": "qwen2.5:3b",
+  "hardware": "GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM",
+  "git_commit": "0bcbf8faef96ca8a754d4903d33a0bc4e76b88be",
+  "image_id": "sha256:fb543047547e57314602bd1bf772348b9a23c24df39a51931c6f277907c16c26",
+  "image_created": "2026-10-30T21:34:58+00:00",
+  "n_tickets": 50
+}
