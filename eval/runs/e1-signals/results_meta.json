@@ -1,0 +1,12 @@
+{
+  "run_name": "e1-signals",
+  "note": "E1: Classifier liefert Signale, urgency per Regeln (urgency_rules.py); Risk-Gate unverändert",
+  "started_at": "2026-10-30T17:46:02+00:00",
+  "finished_at": "2026-10-30T18:24:17+00:00",
+  "model": "qwen2.5:3b",
+  "hardware": "GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM",
+  "git_commit": "866a87ff0d715b763470e4df57fa852106f14786",
+  "image_id": "sha256:5d07e2aacead8eb0fb16fc5fc8b68194c7ad90d917cda4cee4d8c8431ee5233b",
+  "image_created": "2026-10-30T17:44:58+00:00",
+  "n_tickets": 50
+}
