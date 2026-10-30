@@ -9,10 +9,16 @@ def build_prompt(raw_text: str) -> str:
     return f"""Du bist ein Klassifizierungssystem für Backoffice-Tickets im deutschen B2B-Umfeld.
 
 KATEGORIEN:
-- technical_support: Defekte, Fehler, Störungen an Geräten oder Software
-- billing_dispute:   Rechnungen, Mahnungen, Erstattungen, Zahlungen
-- general_inquiry:   Allgemeine Fragen, Informationsanfragen
-- unknown:           Wenn keine Kategorie klar zutrifft
+- technical_support: Etwas funktioniert nicht wie vorgesehen — Defekte, Fehler oder Störungen
+                     an Geräten, Software oder Diensten. Auch kleine oder rein optische Fehler,
+                     auch wenn der Kunde sie als Frage formuliert.
+- billing_dispute:   Der Kunde beanstandet Geld: eine Rechnung, Abbuchung, Gebühr, Mahnung,
+                     Gutschrift oder Erstattung ist aus seiner Sicht falsch oder strittig.
+- general_inquiry:   Anfragen ohne Defekt und ohne strittigen Betrag — Fragen zu Produkten,
+                     Leistungen, Terminen, Unterlagen, Konto- oder Vertragsdaten, Auskunfts-
+                     wünsche, Rückmeldungen. Drohungen oder Fristen ändern die Kategorie nicht.
+- unknown:           Kein Anliegen eines Kunden an uns — z.B. Bewerbungen, Werbung, Spam oder
+                     falsch zugestellte Nachrichten.
 
 DRINGLICHKEITS-REGELN (strikt anwenden):
 - critical: Sicherheitsrisiko, Datenverlust, Produktionsausfall, akuter Notfall

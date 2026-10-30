@@ -31,3 +31,10 @@ Abgelehnter Code liegt als Patch unter `eval/patches/<lauf>.patch`.
 - **Entscheidung:** abgelehnt — Risk-Recall unter 10/11.
 - **Grund:** EVAL-014 nur „frist_genannt“ → high statt critical; Risk-LLM sagt bei „Dringlichkeit: high“ false (wie in e1-signals). FP 021 dafür weg.
 - **Auffällig:** Jetzt Unterschätzung statt Überschätzung — „keine_aktion_erwartet“ feuert nur 3× (14× low→medium). Signal-Ansatz trägt erst, wenn das Risk-Urteil nicht mehr an urgency critical hängt → nach E4 erneut prüfen.
+
+## e3-categories — angenommen
+- **Änderung:** Kategorie-Definitionen im Classifier-Prompt geschärft (tech inkl. kleiner/als Frage formulierter Fehler; billing nur bei strittigem Geld; GI ohne Defekt/Streit, Drohung/Frist ändert Kategorie nicht; unknown = kein Kundenanliegen).
+- **Ergebnis:** Kategorie **43/50** (+3) · Urgency **26/50** (+5) · Risk Recall 10/11 · Precision 10/13 · Name 23/25, 2 erfunden · Latenz 15.9 / 21.3 s
+- **Entscheidung:** angenommen (nach Rückfrage; Kategorie genau an der Schwelle +3).
+- **Grund:** richtig neu 005, 015, 034, 041, 049; falsch neu 009, 042. Urgency +5 als Nebeneffekt (6× critical→high richtig), keine Metrik schlechter.
+- **Auffällig:** GI→billing bleibt (038, 044, 045 trotz „Drohungen/Fristen ändern die Kategorie nicht“); 050 (Werbung) weiter general_inquiry; 031/045 jetzt high statt critical, Risk trotzdem erkannt.
