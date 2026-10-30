@@ -52,3 +52,10 @@ Abgelehnter Code liegt als Patch unter `eval/patches/<lauf>.patch`.
 - **Entscheidung:** angenommen nach Rückfrage — formal 9/11, der Verlust (014) ist Classifier-Rauschen, nicht E5.
 - **Grund:** Verloren ist nur EVAL-014 (kein Keyword, E5 wirkt dort nicht): der Classifier gab urgency high statt critical, das Risk-LLM sagt dann false. Dieselbe Abweichung (014 high, 005 GI/low) trat mit identischem Classifier-Prompt auch in e4 auf → vermutlich war critical in e3 der Ausreißer.
 - **Auffällig:** Die 10/11 des aktuellen Gewinners e3 hängen an einem instabilen Classifier-Ergebnis für 014 (temperature 0, trotzdem nicht deterministisch).
+
+## e6e7-names — angenommen
+- **Änderung:** customer_name-Nachbearbeitung: Signaturen mit Organisations-Marker verworfen (Person vor dem Komma bleibt), Abgleich nur an Wortgrenzen (auch invoice_number/error_code), sonst „snap to text“ auf die ähnlichste Wortfolge ab Ähnlichkeit 0.85.
+- **Ergebnis:** Kategorie 42/50 · Urgency 26/50 · Risk Recall 9/11 · Precision 9/10 · Name **25/25**, **0 erfunden** · Latenz 17.1 / 21.8 s
+- **Entscheidung:** angenommen — Name +2 / erfunden −2, alle anderen Metriken je Ticket identisch zu e5.
+- **Grund:** 035/039 (Signatur) jetzt null; 023 „Sauer“ → „Sauerbeck“ und 037 „Grwald“ → „Grünwald“ per Snap.
+- **Auffällig:** Reine Nachbearbeitung ohne Prompt-Änderung — Classifier/Risk unberührt, daher kein Rauschen in den übrigen Metriken.

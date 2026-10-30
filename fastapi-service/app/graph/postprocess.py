@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+from difflib import SequenceMatcher
 
 from app.models.ticket import null_if_placeholder
 
@@ -32,6 +33,22 @@ _PLACEHOLDER_PATTERN = re.compile(r"^<[^>]+>$")
 # Felder, deren Wert wörtlich im Ticket-Text stehen muss.
 _VERBATIM_FIELDS: frozenset[str] = frozenset({"customer_name", "invoice_number", "error_code"})
 
+# Organisations-/Abteilungs-Marker: ein customer_name damit ist eine Signatur, keine Person
+# (Eval: "Einkauf, Röder Maschinenbau GmbH" als Name). Ganzes Wort, ohne Groß/Klein.
+_ORG_MARKER_PATTERN = re.compile(
+    r"(?<!\w)(?:gmbh|ag|kg|ohg|gbr|e\.\s?v\.|ug|se|mbh|inc|ltd|"
+    r"abteilung|einkauf|buchhaltung|verwaltung|vertrieb|betriebsrat|geschäftsführung|"
+    r"sekretariat|poststelle|team|filiale|zentrale|kundenservice|personalabteilung)(?!\w)",
+    re.IGNORECASE,
+)
+
+# Ab dieser Ähnlichkeit wird ein leicht verstümmelter LLM-Name (z.B. "Grwald" statt
+# "Grünwald", abgeschnittenes "Sauer" statt "Sauerbeck") auf die Textstelle gezogen.
+_SNAP_THRESHOLD = 0.85
+
+# Satzzeichen, die beim Abgleich an Wortgrenzen abgeschnitten werden ("Gruß," -> "Gruß").
+_TOKEN_EDGE_CHARS = ",;:!?\"'()[]"
+
 
 def clean_extracted_data(data: dict) -> dict:
     """Normalisiert 'null'-/Platzhalter-Strings zu None, Booleans bleiben unberührt."""
@@ -46,11 +63,47 @@ def _normalize_for_match(text: str) -> str:
     return " ".join(text.lower().split())
 
 
+def _occurs_as_words(value: str, normalized_text: str) -> bool:
+    """Wert steht im Text, und zwar an Wortgrenzen — "sauer" zählt nicht in "sauerbeck"."""
+    pattern = r"(?<!\w)" + re.escape(_normalize_for_match(value)) + r"(?!\w)"
+    return re.search(pattern, normalized_text) is not None
+
+
+def _person_part(name: str) -> str | None:
+    """Verwirft Signaturen ohne Person. Bei "Name, Abteilung, Firma" bleibt der Teil vor
+    dem ersten Komma, sofern er selbst kein Organisations-Marker ist."""
+    if not _ORG_MARKER_PATTERN.search(name):
+        return name
+    head = name.split(",", 1)[0].strip()
+    if head != name.strip() and head and not _ORG_MARKER_PATTERN.search(head):
+        return head
+    return None
+
+
+def _snap_to_text(value: str, raw_text: str) -> str | None:
+    """Sucht die ähnlichste Wortfolge im Text (gleiche Wortzahl ±1) und gibt sie im
+    Original-Wortlaut zurück, wenn die Ähnlichkeit mindestens _SNAP_THRESHOLD ist."""
+    tokens = [token.strip(_TOKEN_EDGE_CHARS) for token in raw_text.split()]
+    tokens = [token for token in tokens if token]
+    target = _normalize_for_match(value)
+    n_words = len(target.split())
+    best_span, best_ratio = None, 0.0
+    for size in {max(1, n_words - 1), n_words, n_words + 1}:
+        for start in range(len(tokens) - size + 1):
+            span = " ".join(tokens[start:start + size])
+            ratio = SequenceMatcher(None, target, span.lower()).ratio()
+            if ratio > best_ratio:
+                best_span, best_ratio = span, ratio
+    return best_span if best_ratio >= _SNAP_THRESHOLD else None
+
+
 def ground_to_text(extracted: dict, raw_text: str) -> dict:
     """Setzt Regel 1 des Prompts ("nur wörtlich im Text") im Code durch.
     Kleine Modelle übernehmen Platzhalter wie "<NAME>" oder erfinden Werte —
     beides wird hier verworfen. amount/product/deadline werden bewusst NICHT
     auf Wörtlichkeit geprüft (Formatvarianten wie "€" vs. "Euro").
+    customer_name zusätzlich: Signaturen ohne Person werden verworfen, leicht
+    verstümmelte Namen auf die passende Textstelle gezogen ("snap to text").
     Geloggt werden nur Feldname und Grund, nie der Wert (DSGVO)."""
     normalized_text = _normalize_for_match(raw_text)
     grounded = dict(extracted)
@@ -60,7 +113,19 @@ def ground_to_text(extracted: dict, raw_text: str) -> dict:
         if _PLACEHOLDER_PATTERN.match(value.strip()):
             grounded[key] = None
             logger.info("[Node 2 - Extractor] Feld verworfen: %s (Platzhalter)", key)
-        elif key in _VERBATIM_FIELDS and _normalize_for_match(value) not in normalized_text:
+            continue
+        if key == "customer_name":
+            value = _person_part(value)
+            if value is None:
+                grounded[key] = None
+                logger.info("[Node 2 - Extractor] Feld verworfen: %s (Organisation statt Person)", key)
+                continue
+            grounded[key] = value
+            if not _occurs_as_words(value, normalized_text):
+                grounded[key] = _snap_to_text(value, raw_text)
+                logger.info("[Node 2 - Extractor] Feld %s: %s", key,
+                            "auf Textstelle gezogen" if grounded[key] else "verworfen (nicht im Text)")
+        elif key in _VERBATIM_FIELDS and not _occurs_as_words(value, normalized_text):
             grounded[key] = None
             logger.info("[Node 2 - Extractor] Feld verworfen: %s (nicht im Text)", key)
     return grounded
