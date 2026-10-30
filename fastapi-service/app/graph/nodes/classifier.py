@@ -14,15 +14,15 @@ from app.models.ticket import TicketCategory, UrgencyLevel
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Self-Consistency: Anzahl der Klassifizierungs-Läufe pro Ticket.
-# Das Mehrheitsvotum bestimmt category + urgency, die Übereinstimmungsrate
-# liefert die Confidence. Ersetzt die alte, unzuverlässige LLM-Selbstauskunft.
-N_VOTES = 3
+# Anzahl der Klassifizierungs-Läufe pro Ticket. Eval (baseline, refactor): bei 3 Läufen
+# mit temperature 0.5 waren 48/50 Votes einstimmig — die Self-Consistency-Confidence
+# trennte richtig (0.99) und falsch (0.97) nicht, kostete aber 3 LLM-Aufrufe. Daher
+# 1 deterministischer Lauf; die Mehrheitslogik bleibt für N_VOTES > 1 erhalten.
+N_VOTES = 1
 
-# Singleton — temperature > 0 ist hier Voraussetzung:
-# bei temperature=0 wären alle N Läufe identisch und die Confidence immer
-# trügerisch 1.0. Etwas Streuung lässt echte Unsicherheit erst sichtbar werden.
-_llm = build_json_llm(settings.ollama_fast_model, temperature=0.5)
+# Singleton — temperature 0: bei nur einem Lauf gibt es nichts zu streuen.
+# Für N_VOTES > 1 wäre temperature > 0 Voraussetzung, sonst sind alle Läufe identisch.
+_llm = build_json_llm(settings.ollama_fast_model, temperature=0)
 
 
 async def _classify_once(prompt: str, run_idx: int) -> tuple[str, str] | None:

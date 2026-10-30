@@ -43,7 +43,7 @@ The only conditional edge is `_route_after_extractor`: if extraction produced an
 
 ### Two patterns worth knowing before editing nodes
 
-- **Self-consistency confidence (classifier).** The classifier runs `N_VOTES=3` times concurrently (`asyncio.gather`) at `temperature=0.5`. The majority vote sets the label; the agreement rate *is* the `confidence_score` (1.0 = unanimous, 0.67 = 2/3). This deliberately replaces the LLM's self-reported confidence. `temperature > 0` is required here — at 0 all runs would be identical and confidence always a fake 1.0. The other two nodes use `temperature=0`.
+- **Self-consistency voting (classifier), currently 1 vote.** The majority-vote machinery (`asyncio.gather`, agreement rate = `confidence_score`) is kept, but `N_VOTES=1` at `temperature=0` since eval run `single-vote`: with 3 votes at 0.5, 48/50 votes were unanimous, confidence did not separate right from wrong, and latency was 25 % higher. With one vote `confidence_score` is always 1.0 (0.0 on total failure). Raising `N_VOTES` again requires `temperature > 0`. All nodes now use `temperature=0`.
 
 - **Two-stage risk guard.** A keyword pre-filter (`RISK_KEYWORDS`: "anwalt", "klage", "eskalation", …) runs first. The expensive LLM call only fires if a keyword hits **or** urgency is high/critical; routine tickets short-circuit to `risk_flag=False`. This is a cost hot-path — preserve it when modifying.
 

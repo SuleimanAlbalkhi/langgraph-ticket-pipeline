@@ -17,3 +17,10 @@ Abgelehnter Code liegt als Patch unter `eval/patches/<lauf>.patch`.
 - **Entscheidung:** abgelehnt — Risk-Recall unter 10/11, Precision schlechter (neuer FP EVAL-042).
 - **Grund:** EVAL-014 wird auch bei urgency critical nicht mehr erkannt: das Risk-LLM hat sich auf „Dringlichkeit: critical“ gestützt, nicht auf den Text.
 - **Auffällig:** Hypothese widerlegt — nicht die Gate-Kopplung, sondern das Risk-Urteil selbst hängt an der Urgency. 014 (Gesundheit + Verbraucherzentrale) braucht explizite Kriterien im Risk-Prompt (E4).
+
+## single-vote — angenommen
+- **Änderung:** Classifier 1 Lauf statt 3, temperature 0 statt 0.5 (Mehrheitslogik bleibt für N_VOTES > 1).
+- **Ergebnis:** Kategorie 40/50 · Urgency 21/50 · Risk Recall 10/11 · Precision 10/13 · Name 23/25, 2 erfunden · Latenz **16.2 / 21.4 s** (vorher 21.7 / 26.2)
+- **Entscheidung:** angenommen (keine Metrik schlechter, Latenz −25 %); nach Rückfrage bestätigt. Ab hier stoppt die Warteschlange nur, wenn der Recall gegenüber dem letzten angenommenen Stand *auf* 10/11 fällt.
+- **Grund:** Nur EVAL-025 urgency anders (critical→high, jetzt richtig); Risk und Kategorie je Ticket identisch zu refactor.
+- **Auffällig:** Confidence ist mit 1 Lauf konstant 1.0 — war aber schon vorher ohne Aussagekraft (0.99 vs. 0.97).

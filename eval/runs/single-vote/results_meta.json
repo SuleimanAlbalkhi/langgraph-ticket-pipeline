@@ -1,0 +1,12 @@
+{
+  "run_name": "single-vote",
+  "note": "Classifier 1 Lauf statt 3, temperature 0 (Basis 866a87f)",
+  "started_at": "2026-10-30T19:10:47+00:00",
+  "finished_at": "2026-10-30T19:24:13+00:00",
+  "model": "qwen2.5:3b",
+  "hardware": "GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM",
+  "git_commit": "7cd6b1269dbbda9d3f2a7af6a340a16feedc76a4",
+  "image_id": "sha256:585b42732ffb0f732c0fccfeaceb8c1ca48b293103f9857ddcac6e345e3721e7",
+  "image_created": "2026-10-30T19:09:35+00:00",
+  "n_tickets": 50
+}
