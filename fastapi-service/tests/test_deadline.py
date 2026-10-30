@@ -1,7 +1,7 @@
 """Unit-Tests für den Fristen-Regex im Extractor."""
 import pytest
 
-from app.graph.nodes.extractor import _apply_deadline_regex, _extract_deadline_regex
+from app.graph.postprocess import apply_deadline_regex, extract_deadline_regex
 
 
 @pytest.mark.parametrize(
@@ -16,15 +16,15 @@ from app.graph.nodes.extractor import _apply_deadline_regex, _extract_deadline_r
     ids=["datum", "relativ", "wochentag", "uhrzeit", "naechste"],
 )
 def test_deadline_patterns(text, expected):
-    assert _extract_deadline_regex(text) == expected
+    assert extract_deadline_regex(text) == expected
 
 
 def test_no_deadline_returns_none():
-    assert _extract_deadline_regex("Der Drucker zeigt Fehler P-112.") is None
+    assert extract_deadline_regex("Der Drucker zeigt Fehler P-112.") is None
 
 
 def test_llm_deadline_is_not_overwritten():
     extracted = {"deadline": "Ende des Monats", "deadline_mentioned": True}
-    result, summary = _apply_deadline_regex(extracted, "Bitte bis Freitag erledigen.", "Zusammenfassung.")
+    result, summary = apply_deadline_regex(extracted, "Bitte bis Freitag erledigen.", "Zusammenfassung.")
     assert result["deadline"] == "Ende des Monats"
     assert summary == "Zusammenfassung."

@@ -6,6 +6,7 @@ dann den xfail-Marker entfernen.
 """
 import pytest
 
+from app.graph import postprocess
 from app.graph.nodes import extractor, risk_guard
 from app.graph.orchestrator import _route_after_extractor
 
@@ -18,7 +19,7 @@ def test_beklagen_is_not_a_lawsuit_keyword():
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="Fristen-Regex kennt 'bis zum <Datum>' nicht")
 def test_bis_zum_datum_is_found():
-    assert extractor._extract_deadline_regex("Bitte zahlen Sie bis zum 25.06.2026.") is not None
+    assert postprocess.extract_deadline_regex("Bitte zahlen Sie bis zum 25.06.2026.") is not None
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="Fallback-Summary ist länger als _MIN_SUMMARY_LEN, Retry greift nie")

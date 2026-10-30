@@ -74,3 +74,11 @@ The extractor also runs a **regex deadline post-processor** (`_DEADLINE_PATTERNS
 - `eval/holdout/` is never read, except for an explicitly ordered final run.
 - One experiment = one change = one full run over all 50 tickets.
 - Every run writes to `eval/runs/<name>/` and never overwrites anything.
+
+Acceptance thresholds, derived from the noise band between `baseline` and `baseline-2` (same code and image: 1 category and 2 urgency tickets flipped, risk and name identical):
+
+- Category / urgency: an experiment counts as an improvement only at **≥ 3 tickets** better than the previous winner.
+- Risk flag / customer name: **≥ 1 ticket** counts.
+- No other metric may get worse beyond the same band; risk recall must never drop below 10/11.
+
+Before every run rebuild the image (`docker compose up -d --build fastapi-service`); `run_eval.py` aborts if the image is older than the app code. `eval/compare.py` writes the overview to `eval/runs/COMPARISON.md`.

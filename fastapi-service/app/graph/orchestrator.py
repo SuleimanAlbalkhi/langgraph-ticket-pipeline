@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import logging
-from typing import TypedDict
 
 from langgraph.graph import StateGraph
 
-from app.graph.nodes.extractor import HARD_FAILURE_SUMMARIES
+from app.graph.state import HARD_FAILURE_SUMMARIES, GraphState
 from app.models.ticket import TicketAnalysis, TicketCategory, TicketInput, UrgencyLevel
 
 logger = logging.getLogger(__name__)
@@ -16,25 +15,6 @@ MAX_RETRIES = 2
 
 # Eine Extraktion gilt als "leer" und retry-würdig, wenn die summary zu kurz ist.
 _MIN_SUMMARY_LEN = 20
-
-
-class GraphState(TypedDict):
-    # Input
-    ticket_id: str
-    raw_text: str
-    source: str
-    # Node 1 Output
-    category: str | None
-    urgency: str | None
-    # Node 2 Output
-    summary: str | None
-    extracted_data: dict | None
-    confidence_score: float | None
-    # Node 3 Output
-    risk_flag: bool | None
-    risk_reason: str | None
-    # Interne Steuerung
-    retry_count: int
 
 
 _compiled_app = None

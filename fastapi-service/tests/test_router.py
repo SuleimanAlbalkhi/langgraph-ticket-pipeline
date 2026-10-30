@@ -1,6 +1,6 @@
 """Unit-Tests für die Retry-Entscheidung nach dem Extractor."""
-from app.graph.nodes.extractor import SUMMARY_TIMEOUT
 from app.graph.orchestrator import MAX_RETRIES, _extraction_is_empty, _route_after_extractor
+from app.graph.state import SUMMARY_TIMEOUT
 
 EMPTY = {"customer_name": None, "invoice_number": None, "deadline_mentioned": False}
 LONG_SUMMARY = "Kunde meldet einen Druckerfehler beim Start."
