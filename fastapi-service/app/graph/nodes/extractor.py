@@ -42,6 +42,12 @@ _DEADLINE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
     )
 )
 
+# Platzhalter wie "<NAME>" aus den Few-Shot-Beispielen — nie ein echter Wert.
+_PLACEHOLDER_PATTERN = re.compile(r"^<[^>]+>$")
+
+# Felder, deren Wert wörtlich im Ticket-Text stehen muss.
+_VERBATIM_FIELDS: frozenset[str] = frozenset({"customer_name", "invoice_number", "error_code"})
+
 # Singleton — einmal beim Import gebaut
 _llm = build_json_llm(settings.ollama_fast_model, temperature=0)
 
@@ -60,6 +66,31 @@ def _clean_extracted_data(data: dict) -> dict:
         key: value if isinstance(value, bool) else _normalize_value(value)
         for key, value in data.items()
     }
+
+
+def _normalize_for_match(text: str) -> str:
+    """Kleinschreibung + jeglicher Whitespace (auch Zeilenumbrüche) zu einem Leerzeichen."""
+    return " ".join(text.lower().split())
+
+
+def _ground_to_text(extracted: dict, raw_text: str) -> dict:
+    """Setzt Regel 1 des Prompts ("nur wörtlich im Text") im Code durch.
+    Kleine Modelle übernehmen Platzhalter wie "<NAME>" oder erfinden Werte —
+    beides wird hier verworfen. amount/product/deadline werden bewusst NICHT
+    auf Wörtlichkeit geprüft (Formatvarianten wie "€" vs. "Euro").
+    Geloggt werden nur Feldname und Grund, nie der Wert (DSGVO)."""
+    normalized_text = _normalize_for_match(raw_text)
+    grounded = dict(extracted)
+    for key, value in extracted.items():
+        if not isinstance(value, str):
+            continue
+        if _PLACEHOLDER_PATTERN.match(value.strip()):
+            grounded[key] = None
+            logger.info("[Node 2 - Extractor] Feld verworfen: %s (Platzhalter)", key)
+        elif key in _VERBATIM_FIELDS and _normalize_for_match(value) not in normalized_text:
+            grounded[key] = None
+            logger.info("[Node 2 - Extractor] Feld verworfen: %s (nicht im Text)", key)
+    return grounded
 
 
 def _extract_deadline_regex(text: str) -> str | None:
@@ -91,19 +122,23 @@ STRIKTE REGELN:
 2. Wenn ein Wert nicht im Text steht: gib JSON null zurück (NIE den String "null", NIE "n/a", NIE Platzhalter).
 3. Die folgenden Beispiele sind NUR Format-Vorlage — übernimm KEINE Namen, Nummern oder Beträge daraus.
 4. Verwechsle nicht: Rechnungsnummer ist KEIN Fehlercode.
-5. summary: 1-2 deutsche Sätze, sachlich. Eine etwaige Frist gerne miterwähnen.
+5. customer_name: der Name der ABSENDENDEN PERSON aus Anrede oder Grußformel —
+   niemals der Firmenname, niemals der Empfänger. Steht keine Person im Text: null.
+6. summary: 1-2 deutsche Sätze, sachlich. Eine etwaige Frist gerne miterwähnen.
+   Steht eine absendende Person im Text, nenne sie am Satzanfang.
 
-BEISPIEL technical_support:
-Text: "Mein Drucker Modell <PRODUKT> zeigt Error <CODE> beim Start."
+BEISPIEL technical_support (mit Absender):
+Text: "Mein Drucker Modell Kyocera M2040 zeigt Error E-7031 beim Start.
+Viele Grüße, Jana Vogt, Einkauf, Musterbau GmbH"
 Antwort:
-{{"summary": "Drucker <PRODUKT> zeigt Fehler <CODE> beim Start.",
-  "extracted_data": {{"customer_name": null, "product": "<PRODUKT>", "error_code": "<CODE>", "invoice_number": null, "amount": null, "deadline_mentioned": false, "deadline": null}}}}
+{{"summary": "Jana Vogt meldet, dass Drucker Kyocera M2040 beim Start Fehler E-7031 zeigt.",
+  "extracted_data": {{"customer_name": "Jana Vogt", "product": "Kyocera M2040", "error_code": "E-7031", "invoice_number": null, "amount": null, "deadline_mentioned": false, "deadline": null}}}}
 
-BEISPIEL billing_dispute:
-Text: "Ich beanstande Rechnung <NUMMER> über <BETRAG>, bitte stornieren."
+BEISPIEL billing_dispute (Rechnung UND Produkt im selben Ticket):
+Text: "Ich beanstande Rechnung RE-2025-1102 über 89,00 Euro für das Gerät Brother HL-L2350, bitte stornieren."
 Antwort:
-{{"summary": "Beanstandung der Rechnung <NUMMER> über <BETRAG> mit Stornierungswunsch.",
-  "extracted_data": {{"customer_name": null, "product": null, "error_code": null, "invoice_number": "<NUMMER>", "amount": "<BETRAG>", "deadline_mentioned": false, "deadline": null}}}}
+{{"summary": "Beanstandung der Rechnung RE-2025-1102 über 89,00 Euro für Brother HL-L2350 mit Stornierungswunsch.",
+  "extracted_data": {{"customer_name": null, "product": "Brother HL-L2350", "error_code": null, "invoice_number": "RE-2025-1102", "amount": "89,00 Euro", "deadline_mentioned": false, "deadline": null}}}}
 
 BEISPIEL general_inquiry:
 Text: "Wann ist der nächste Newsletter geplant? Vielen Dank."
@@ -206,6 +241,7 @@ async def extract_node(state: GraphState) -> GraphState:
         return _failure_state(state, SUMMARY_FAILED, retry_count)
 
     summary, extracted = _parse_response(data)
+    extracted = _ground_to_text(extracted, state["raw_text"])
     extracted, summary = _apply_deadline_regex(extracted, state["raw_text"], summary)
     logger.info("[Node 2 - Extractor] DONE | summary_len=%d", len(summary))
 
