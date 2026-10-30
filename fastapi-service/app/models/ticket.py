@@ -85,6 +85,11 @@ class ExtractedData(BaseModel):
                      "invoice_number", "amount", "deadline", mode="before")
     @classmethod
     def _nullify_placeholder(cls, v: object) -> object:
+        # Listen (z.B. zwei Rechnungsnummern) zu einem String verbinden — sonst
+        # ValidationError beim Egress und HTTP 500 (Holdout-Lauf, HOLD-014).
+        if isinstance(v, (list, tuple)):
+            items = [str(item).strip() for item in v if null_if_placeholder(item) is not None]
+            v = ", ".join(item for item in items if item) or None
         return null_if_placeholder(v)
 
 

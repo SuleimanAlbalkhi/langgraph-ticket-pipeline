@@ -108,6 +108,19 @@ def ground_to_text(extracted: dict, raw_text: str) -> dict:
     normalized_text = _normalize_for_match(raw_text)
     grounded = dict(extracted)
     for key, value in extracted.items():
+        if isinstance(value, (list, tuple)):
+            # Mehrere Werte (z.B. zwei Rechnungsnummern): jedes Element einzeln prüfen,
+            # die belegten zu einem String verbinden. Ein Name ist immer genau einer.
+            items = [item.strip() for item in value if isinstance(item, str) and item.strip()]
+            if key in _VERBATIM_FIELDS:
+                items = [item for item in items if _occurs_as_words(item, normalized_text)]
+            if key == "customer_name":
+                items = items[:1]
+            value = ", ".join(items) or None
+            grounded[key] = value
+            logger.info("[Node 2 - Extractor] Feld %s: Liste zusammengeführt", key)
+            if key != "customer_name" or value is None:
+                continue
         if not isinstance(value, str):
             continue
         if _PLACEHOLDER_PATTERN.match(value.strip()):
