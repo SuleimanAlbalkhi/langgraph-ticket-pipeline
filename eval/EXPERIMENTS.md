@@ -38,3 +38,10 @@ Abgelehnter Code liegt als Patch unter `eval/patches/<lauf>.patch`.
 - **Entscheidung:** angenommen (nach Rückfrage; Kategorie genau an der Schwelle +3).
 - **Grund:** richtig neu 005, 015, 034, 041, 049; falsch neu 009, 042. Urgency +5 als Nebeneffekt (6× critical→high richtig), keine Metrik schlechter.
 - **Auffällig:** GI→billing bleibt (038, 044, 045 trotz „Drohungen/Fristen ändern die Kategorie nicht“); 050 (Werbung) weiter general_inquiry; 031/045 jetzt high statt critical, Risk trotzdem erkannt.
+
+## e4-risk-prompt — abgelehnt
+- **Änderung:** Risk-Prompt mit 4 expliziten Kriterien (Recht/externe Stelle, Kündigung mit Frist, Betrug, Gefahr/Datenverlust), „Ärger ohne Folge = false“, risk_reason als wörtliches Zitat; Basis e3.
+- **Ergebnis:** Kategorie 42/50 · Urgency 26/50 · Risk Recall **6/11** · Precision 6/8 · Name 23/25, 2 erfunden · Latenz 17.2 / 20.9 s
+- **Entscheidung:** abgelehnt — Recall bricht ein (−4).
+- **Grund:** Das LLM sagt bei allen Tickets ohne Keyword false (014, 025, 031, 045, 046); alle verbliebenen Treffer kommen aus dem Keyword-Floor. Das strenge „NUR dann true“ macht das 3B-Modell übervorsichtig.
+- **Auffällig:** Zitat-Vorgabe wird ignoriert (Reason meist leer bzw. Floor-Text, einmal Kriterium abgeschrieben). FP 021 weg, 006/027 bleiben (Keyword „unzumutbar“).
