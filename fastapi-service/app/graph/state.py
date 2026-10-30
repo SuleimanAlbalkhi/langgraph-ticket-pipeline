@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-# Fallback-Zusammenfassungen bei harten Fehlern. Hier statt im Extractor, weil
-# der Router (orchestrator._route_after_extractor) sie als Hard-Failure-Signal
-# erkennen muss — Single Source of Truth ohne Import-Zyklus orchestrator <-> extractor.
+# Fallback-Zusammenfassungen bei harten Fehlern des Extractors (Timeout / LLM- oder
+# Parse-Fehler). Feste Strings, damit Konsumenten (z.B. eval/report.py) sie erkennen.
 SUMMARY_TIMEOUT = "Extraktion-Timeout."
 SUMMARY_FAILED  = "Extraktion fehlgeschlagen."
-HARD_FAILURE_SUMMARIES: frozenset[str] = frozenset({SUMMARY_TIMEOUT, SUMMARY_FAILED})
 
 
 class GraphState(TypedDict):
@@ -25,5 +23,3 @@ class GraphState(TypedDict):
     # Node 3 Output
     risk_flag: bool | None
     risk_reason: str | None
-    # Interne Steuerung
-    retry_count: int

@@ -37,8 +37,7 @@ def _cases() -> dict[str, str]:
     cases = {}
     for name, (category, urgency, text) in TICKETS.items():
         cases[f"classifier_{name}"] = classifier_prompt(text)
-        cases[f"extractor_{name}"] = extractor_prompt(category, text, False)
-        cases[f"extractor_retry_{name}"] = extractor_prompt(category, text, True)
+        cases[f"extractor_{name}"] = extractor_prompt(category, text)
         cases[f"risk_guard_{name}"] = risk_prompt(text, category, urgency)
     return cases
 

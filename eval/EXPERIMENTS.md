@@ -59,3 +59,14 @@ Abgelehnter Code liegt als Patch unter `eval/patches/<lauf>.patch`.
 - **Entscheidung:** angenommen — Name +2 / erfunden −2, alle anderen Metriken je Ticket identisch zu e5.
 - **Grund:** 035/039 (Signatur) jetzt null; 023 „Sauer“ → „Sauerbeck“ und 037 „Grwald“ → „Grünwald“ per Snap.
 - **Auffällig:** Reine Nachbearbeitung ohne Prompt-Änderung — Classifier/Risk unberührt, daher kein Rauschen in den übrigen Metriken.
+
+## e9-no-retry — angenommen (ohne Lauf)
+- **Änderung:** Extractor-Retry-Schleife entfernt (Router, MAX_RETRIES, retry_count, Retry-Hinweis im Prompt); Graph jetzt linear classifier → extractor → risk_guard.
+- **Ergebnis:** kein Eval-Lauf (vereinbart: 0 Retries in den Logs). Container-Logs: 63 + 53 Extractor-Läufe, 0× „RETRY“, Router immer `reason=ok`.
+- **Entscheidung:** angenommen — toter Code, Verhalten unverändert; normaler Extractor-Prompt per Snapshot byte-identisch.
+- **Grund:** Retry griff nur bei Summary < 20 Zeichen UND allen Feldern null; die Fallback-Summary ist selbst länger (bekannte Schwäche c) — der Pfad war praktisch unerreichbar.
+- **Auffällig:** Tests: test_router.py und 3 Retry-Snapshots entfernt, xfail (c) entfällt; 64 passed, 2 xfailed. Kurzprüfung mit 1 Ticket im neuen Image ok.
+
+## Stand nach der Warteschlange
+Aktueller Gewinner: **e6e7-names** + E9 — Kategorie 42/50 · Urgency 26/50 · Risk Recall 9/11 (014 instabil) · Precision 9/10 · Name 25/25, 0 erfunden · Latenz ~17 s (Baseline: 40 · 20 · 10/11 · 10/13 · 23/25, 2 erfunden · ~21 s).
+Offen: EVAL-014/046 (Gesundheitsgefahr ohne Keyword) hängen am Risk-Urteil des 3B-Modells; jede Prompt-Verschärfung (e4) und jede Urgency-Senkung (e1, e1b, e2) verliert 014. Urgency bleibt die schwächste Metrik.

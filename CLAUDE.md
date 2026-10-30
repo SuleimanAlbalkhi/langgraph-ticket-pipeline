@@ -33,13 +33,13 @@ Request flow: n8n webhook → `POST /analyze` → LangGraph pipeline → Ollama.
 
 ### The LangGraph pipeline (`app/graph/`)
 
-`orchestrator.py` defines a `StateGraph` over a `GraphState` TypedDict and compiles it **once** (cached in `_compiled_app`, reused across requests). Three nodes run in order, with one conditional loop:
+`orchestrator.py` defines a `StateGraph` over a `GraphState` TypedDict and compiles it **once** (cached in `_compiled_app`, reused across requests). Three nodes run in a fixed linear order:
 
 1. **classifier** (`nodes/classifier.py`) → sets `category` + `urgency` + `confidence_score`.
-2. **extractor** (`nodes/extractor.py`) → sets `summary` + `extracted_data`, increments `retry_count`.
+2. **extractor** (`nodes/extractor.py`) → sets `summary` + `extracted_data`.
 3. **risk_guard** (`nodes/risk_guard.py`) → sets `risk_flag` + `risk_reason`.
 
-The only conditional edge is `_route_after_extractor`: if extraction produced an all-null `extracted_data` **and** a too-short summary, it loops back to the extractor (with an augmented "retry" prompt) until `MAX_RETRIES` (2) — otherwise proceeds to risk_guard. Hard failures (timeout/LLM error) skip straight to risk_guard.
+There is no conditional edge anymore: the former extractor retry loop was removed after it never fired in 100+ eval runs (see `eval/EXPERIMENTS.md`, E9). On timeout/LLM error the extractor returns a fixed fallback summary and the graph continues to risk_guard.
 
 ### Two patterns worth knowing before editing nodes
 

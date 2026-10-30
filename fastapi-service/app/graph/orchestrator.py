@@ -4,18 +4,10 @@ import logging
 
 from langgraph.graph import StateGraph
 
-from app.graph.state import HARD_FAILURE_SUMMARIES, GraphState
+from app.graph.state import GraphState
 from app.models.ticket import TicketAnalysis, TicketCategory, TicketInput, UrgencyLevel
 
 logger = logging.getLogger(__name__)
-
-# retry_count ist ein Versuchszähler — MAX_RETRIES=2 erlaubt max. 2 Extractor-
-# Läufe (1 echter Retry), bevor der Router zwingend zu risk_guard weitergeht.
-MAX_RETRIES = 2
-
-# Eine Extraktion gilt als "leer" und retry-würdig, wenn die summary zu kurz ist.
-_MIN_SUMMARY_LEN = 20
-
 
 _compiled_app = None
 
@@ -30,18 +22,11 @@ def _build_app():
     graph.add_node("extractor", extract_node)
     graph.add_node("risk_guard", risk_guard_node)
 
-    # Edges: Reihenfolge der Nodes. Einzige Verzweigung ist die Retry-Schleife
-    # nach dem Extractor (_route_after_extractor).
+    # Edges: lineare Reihenfolge. Die frühere Retry-Schleife nach dem Extractor wurde
+    # entfernt — sie hat in über 100 Eval-Läufen kein einziges Mal gegriffen.
     graph.set_entry_point("classifier")
     graph.add_edge("classifier", "extractor")
-    graph.add_conditional_edges(
-        "extractor",
-        _route_after_extractor,
-        {
-            "extractor":  "extractor",
-            "risk_guard": "risk_guard",
-        },
-    )
+    graph.add_edge("extractor", "risk_guard")
 
     return graph.compile()
 
@@ -67,7 +52,6 @@ def _initial_state(ticket: TicketInput) -> GraphState:
         "confidence_score": 0.0,
         "risk_flag":        False,
         "risk_reason":      None,
-        "retry_count":      0,
     }
 
 
@@ -86,35 +70,3 @@ async def run_graph(ticket: TicketInput) -> TicketAnalysis:
         risk_flag        = final_state["risk_flag"] or False,
         risk_reason      = final_state["risk_reason"],
     )
-
-
-def _extraction_is_empty(extracted: dict, summary: str) -> bool:
-    """Eine Extraktion ist retry-würdig, wenn ALLE Werte leer sind UND die
-    summary zu kurz ausfiel. `is None`/`is False` statt `in (None, False)`
-    vermeidet, dass 0/0.0 wegen 0 == False fälschlich als "leer" zählt."""
-    all_null = all(value is None or value is False for value in extracted.values())
-    summary_too_short = len(summary) < _MIN_SUMMARY_LEN
-    logger.info("[Router] check | all_null=%s summary_len=%d", all_null, len(summary))
-    return all_null and summary_too_short
-
-
-def _route_after_extractor(state: GraphState) -> str:
-    summary = state.get("summary") or ""
-    extracted = state.get("extracted_data") or {}
-    retry_count = state.get("retry_count", 0)
-
-    # Harte Fehler (Timeout/LLM-Fehler) überspringen den Retry direkt.
-    if summary in HARD_FAILURE_SUMMARIES:
-        logger.info("[Router] decision=risk_guard reason=hard_failure")
-        return "risk_guard"
-
-    if retry_count >= MAX_RETRIES:
-        logger.info("[Router] decision=risk_guard reason=max_retries (%d)", retry_count)
-        return "risk_guard"
-
-    if _extraction_is_empty(extracted, summary):
-        logger.info("[Router] decision=extractor reason=retry_triggered (retry_count=%d)", retry_count)
-        return "extractor"
-
-    logger.info("[Router] decision=risk_guard reason=ok")
-    return "risk_guard"

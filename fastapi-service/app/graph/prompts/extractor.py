@@ -4,18 +4,8 @@ from __future__ import annotations
 from app.graph.prompt_safety import fence_user_input
 
 
-def build_prompt(category: str, raw_text: str, is_retry: bool) -> str:
-    """Baut den Extraktions-Prompt. Beim Retry wird ein Hinweis vorangestellt,
-    der das Modell zu genauerem Lesen anhält."""
-    retry_hint = ""
-    if is_retry:
-        retry_hint = (
-            "\n\nWICHTIG (Retry-Versuch): Der vorherige Extraktions-Versuch hat "
-            "nichts Verwertbares geliefert. Lies den Text JETZT besonders genau. "
-            "Suche auch nach indirekten Hinweisen (z.B. Modellnamen in Klammern, "
-            "Beträge in Zahlenform, Namen am Ende der Nachricht).\n"
-        )
-
+def build_prompt(category: str, raw_text: str) -> str:
+    """Baut den Extraktions-Prompt."""
     return f"""Du bist ein Datenextraktions-System für Backoffice-Tickets.
 Die Kategorie wurde bereits klassifiziert: {category}
 
@@ -48,7 +38,7 @@ Antwort:
 {{"summary": "Anfrage zum Erscheinungstermin des nächsten Newsletters.",
   "extracted_data": {{"customer_name": null, "product": null, "error_code": null, "invoice_number": null, "amount": null, "deadline_mentioned": false, "deadline": null}}}}
 
-{retry_hint}JETZT der echte Text:
+JETZT der echte Text:
 {fence_user_input(raw_text)}
 
 Antworte AUSSCHLIESSLICH mit dem JSON:

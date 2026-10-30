@@ -30,32 +30,20 @@ def _parse_response(data: dict) -> tuple[str, dict]:
     return summary, clean_extracted_data(extracted)
 
 
-def _failure_state(state: GraphState, summary: str, retry_count: int) -> GraphState:
-    """Einheitlicher Fehler-State für Timeout / LLM-Fehler / Parse-Fehler.
-    retry_count wird erhöht, damit der Router die Retry-Grenze sieht."""
-    return {
-        **state,
-        "summary":        summary,
-        "extracted_data": {},
-        "retry_count":    retry_count + 1,
-    }
+def _failure_state(state: GraphState, summary: str) -> GraphState:
+    """Einheitlicher Fehler-State für Timeout / LLM-Fehler / Parse-Fehler."""
+    return {**state, "summary": summary, "extracted_data": {}}
 
 
 async def extract_node(state: GraphState) -> GraphState:
     logger.info("[Node 2 - Extractor] START | category=%s", state["category"])
-    # retry_count ist ein Versuchszähler — wird bei JEDEM Extractor-Lauf erhöht,
-    # auch beim ersten. MAX_RETRIES=2 bedeutet also max. 2 Läufe / 1 echter Retry.
-    retry_count = state.get("retry_count", 0)
-    is_retry = retry_count > 0
-    if is_retry:
-        logger.info("[Node 2 - Extractor] RETRY #%d", retry_count)
 
-    prompt = build_prompt(state["category"], state["raw_text"], is_retry)
+    prompt = build_prompt(state["category"], state["raw_text"])
     data = await invoke_json(_llm, prompt, "Node 2 - Extractor")
     if data is LLMFailure.TIMEOUT:
-        return _failure_state(state, SUMMARY_TIMEOUT, retry_count)
+        return _failure_state(state, SUMMARY_TIMEOUT)
     if isinstance(data, LLMFailure):
-        return _failure_state(state, SUMMARY_FAILED, retry_count)
+        return _failure_state(state, SUMMARY_FAILED)
 
     summary, extracted = _parse_response(data)
     extracted = ground_to_text(extracted, state["raw_text"])
@@ -66,5 +54,4 @@ async def extract_node(state: GraphState) -> GraphState:
         **state,
         "summary":        summary,
         "extracted_data": extracted,
-        "retry_count":    retry_count + 1,
     }
