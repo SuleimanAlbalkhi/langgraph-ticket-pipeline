@@ -65,3 +65,12 @@ The extractor also runs a **regex deadline post-processor** (`_DEADLINE_PATTERNS
 ## n8n workflow
 
 `n8n-workflows/Ticket-Analysis-Pipeline.json` is the versioned export. A `Switch` splits on `risk_flag` into an Escalation path and a Normal path. The final Slack/Notion delivery nodes are intentionally stubbed as `Set` nodes in this public repo (real delivery needs live credentials that must not be committed); swapping a `Set` for a real integration node is a drop-in change in the editor, no code change.
+
+## Evaluation
+
+`eval/tickets.jsonl` holds 50 labeled tickets; `eval/run_eval.py` sends them to `POST /analyze`, `eval/report.py` writes the metrics. Hard rules:
+
+- `eval/tickets.jsonl` is never changed.
+- `eval/holdout/` is never read, except for an explicitly ordered final run.
+- One experiment = one change = one full run over all 50 tickets.
+- Every run writes to `eval/runs/<name>/` and never overwrites anything.
