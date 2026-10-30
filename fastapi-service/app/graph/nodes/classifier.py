@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-from collections import Counter
 import asyncio
 import logging
 import time
+from collections import Counter
+from typing import TYPE_CHECKING
 
 from app.config import get_settings
 from app.graph.llm_utils import build_json_llm, parse_json_object
@@ -65,10 +65,10 @@ async def _classify_once(prompt: str, run_idx: int) -> tuple[str, str] | None:
             _llm.ainvoke(prompt),
             timeout=settings.ollama_timeout,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.error("[Node 1 - Classifier] Lauf %d: TIMEOUT", run_idx)
         return None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — jeder LLM-Fehler soll in den sicheren Fallback, nicht in einen 500
         logger.error("[Node 1 - Classifier] Lauf %d: LLM-Fehler: %s", run_idx, exc)
         return None
 
