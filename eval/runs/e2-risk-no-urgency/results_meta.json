@@ -1,0 +1,12 @@
+{
+  "run_name": "e2-risk-no-urgency",
+  "note": "Risk entkoppeln: Dringlichkeit aus dem Risk-Prompt entfernt (Basis 866a87f, ohne E1)",
+  "started_at": "2026-10-30T18:50:48+00:00",
+  "finished_at": "2026-10-30T19:08:21+00:00",
+  "model": "qwen2.5:3b",
+  "hardware": "GTX 1050 Ti 4 GB (Laptop), Intel i7-7700HQ, 16 GB RAM",
+  "git_commit": "866a87ff0d715b763470e4df57fa852106f14786",
+  "image_id": "sha256:b6a6f9c8b0b1234088d5e98300b859ee2702657d550e0ad1d405372727a94342",
+  "image_created": "2026-10-30T18:50:35+00:00",
+  "n_tickets": 50
+}
