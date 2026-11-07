@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import uuid  # für generische Fehler-IDs
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response, Security
+from fastapi.security import APIKeyHeader
 
 from app.config import get_settings
 from app.models.ticket import TicketAnalysis, TicketInput
@@ -20,12 +22,17 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Service startet: %s", settings.app_name)
-    logger.info("Fast-Modell:  %s", settings.ollama_fast_model)
-    logger.info("Smart-Modell: %s", settings.ollama_smart_model)
-    logger.info("Ollama URL:   %s", settings.ollama_base_url)
-    logger.info("LLM-Timeout:  %.0fs", settings.ollama_timeout)
+    logger.info("Service startet: %s (Commit %s)", settings.app_name, settings.git_sha)
+    logger.info("LLM-Provider: %s", settings.llm_provider)
+    logger.info("Fast-Modell:  %s", settings.fast_model)
+    logger.info("Smart-Modell: %s", settings.smart_model)
+    if settings.llm_provider == "azure":
+        logger.info("Azure-Endpunkt: %s", settings.azure_openai_endpoint or "(nicht gesetzt)")
+    else:
+        logger.info("Ollama URL:   %s", settings.ollama_base_url)
+    logger.info("LLM-Timeout:  %.0fs", settings.llm_timeout)
     logger.info("Max. parallele Analysen: %d", settings.max_concurrent_analyses)
+    logger.info("API-Key-Schutz: %s", "an" if settings.api_key else "AUS (API_KEY nicht gesetzt)")
     yield
     logger.info("Service wird beendet.")
 
@@ -51,12 +58,73 @@ def _error_response(error_id: str) -> dict[str, str]:
     }
 
 
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def require_api_key(key: str | None = Security(_api_key_header)) -> None:
+    """Schützt /analyze. Ohne Schutz könnte jeder, der die URL kennt, über den Service
+    Modellaufrufe auslösen und das Azure-Guthaben verbrauchen.
+    compare_digest vergleicht in konstanter Zeit — ein normales == bricht beim ersten
+    falschen Zeichen ab, und aus der Antwortzeit ließe sich der Key Zeichen für Zeichen
+    erraten (Timing-Angriff)."""
+    expected = settings.api_key
+    if not expected:
+        return  # Schutz aus: nur lokal; /ready verhindert das in der Cloud (siehe unten)
+    if key is None or not secrets.compare_digest(key.encode(), expected.encode()):
+        raise HTTPException(
+            status_code=401,
+            detail="Fehlender oder ungültiger API-Key.",
+            headers={"WWW-Authenticate": "APIKey"},
+        )
+
+
 @app.get("/health")
 async def health_check() -> dict[str, str]:
+    """Liveness: beantwortet nur "läuft der Prozess?". Keine Abhängigkeiten prüfen —
+    sonst startet die Plattform den Container neu, nur weil z.B. Azure kurz hakt."""
     return {"status": "ok", "service": settings.app_name}
 
 
-@app.post("/analyze", response_model=TicketAnalysis)
+def _config_problems() -> list[str]:
+    """Konfigurationsfehler, wegen derer die Instanz keinen Verkehr annehmen darf."""
+    problems: list[str] = []
+    if settings.llm_provider == "azure":
+        if not settings.azure_openai_endpoint:
+            problems.append("AZURE_OPENAI_ENDPOINT fehlt")
+        if not settings.api_key:
+            problems.append("API_KEY fehlt (in der Cloud ist der Schutz Pflicht)")
+    return problems
+
+
+@app.get("/ready")
+async def readiness_check(response: Response) -> dict:
+    """Readiness: "darf diese Instanz Anfragen bekommen?". Prüft die Konfiguration und
+    bei Azure, ob die Identität ein Token bekommt — aber bewusst OHNE Modellaufruf, sonst
+    kostet jede Probe Tokens. Das Token wird vom Provider gecacht, wiederholte Proben
+    sind billig. Gibt außerdem den Commit des Images zurück (für den Deploy-Smoke-Test)."""
+    problems = _config_problems()
+    if settings.llm_provider == "azure" and not problems:
+        from app.graph.llm_utils import get_azure_token_provider
+
+        try:
+            # Der Token-Abruf ist blockierend (HTTP zu Entra ID) → in einen Thread auslagern.
+            await asyncio.to_thread(get_azure_token_provider())
+        except Exception as exc:  # noqa: BLE001 — jeder Fehler heißt: nicht bereit
+            logger.warning("[Ready] Token-Abruf fehlgeschlagen: %s", exc)
+            problems.append("Token-Abruf für Azure OpenAI fehlgeschlagen")
+
+    body: dict = {
+        "status": "not_ready" if problems else "ready",
+        "provider": settings.llm_provider,
+        "git_sha": settings.git_sha,
+    }
+    if problems:
+        body["problems"] = problems
+        response.status_code = 503
+    return body
+
+
+@app.post("/analyze", response_model=TicketAnalysis, dependencies=[Depends(require_api_key)])
 async def analyze_ticket(ticket: TicketInput) -> TicketAnalysis:
     # Lazy-Import: der Graph (inkl. ChatOllama-Singletons) wird erst beim ersten
     # /analyze-Aufruf gebaut, nicht schon beim Service-Start.

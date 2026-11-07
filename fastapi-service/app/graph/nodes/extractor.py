@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Singleton — einmal beim Import gebaut
-_llm = build_json_llm(settings.ollama_fast_model, temperature=0)
+_llm = build_json_llm(settings.fast_model, temperature=0)
 
 
 def _parse_response(data: dict) -> tuple[str, dict]:

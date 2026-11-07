@@ -31,7 +31,7 @@ def has_risk_keyword(text: str) -> bool:
     return _KEYWORD_PATTERN.search(text) is not None
 
 # Singleton — einmal beim Import gebaut
-_llm = build_json_llm(settings.ollama_smart_model, temperature=0)
+_llm = build_json_llm(settings.smart_model, temperature=0)
 
 
 def _keyword_floor(state: GraphState, keyword_hit: bool) -> GraphState:

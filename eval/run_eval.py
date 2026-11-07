@@ -4,11 +4,16 @@ in eval/runs/<run-name>/. Ein bestehender Lauf wird nie überschrieben.
 Beispiel (aus dem Repo-Root):
     python eval/run_eval.py --run-name e1-signals --note "Urgency aus Signalen" --hardware "RTX 3060 12 GB"
     python eval/run_eval.py --run-name e1-signals --hardware "..." --resume
+
+Gegen die Cloud (API-Key aus der Umgebungsvariable EVAL_API_KEY, Commit-Prüfung über /ready):
+    python eval/run_eval.py --run-name azure-dev --base-url https://<app>.azurecontainerapps.io \
+        --model gpt-4.1-mini --hardware "Azure OpenAI GlobalStandard (France Central)"
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -25,7 +30,8 @@ REPO_DIR      = EVAL_DIR.parent
 APP_DIR       = REPO_DIR / "fastapi-service" / "app"
 CONTAINER     = "hybrid-ai-fastapi"  # container_name in docker-compose.yml
 
-BASE_URL        = "http://localhost:8000"
+BASE_URL        = "http://localhost:8000"  # Default; mit --base-url überschreibbar
+API_KEY_ENV     = "EVAL_API_KEY"
 REQUEST_TIMEOUT = 300.0
 MAX_ATTEMPTS    = 3
 DEFAULT_RETRY_AFTER = 5.0
@@ -113,10 +119,28 @@ def _write_meta(meta_path: Path, meta: dict) -> None:
 
 def _check_health(client: httpx.Client) -> None:
     try:
-        resp = client.get(f"{BASE_URL}/health", timeout=10.0)
+        resp = client.get("/health", timeout=10.0)
         resp.raise_for_status()
     except httpx.HTTPError as exc:
-        sys.exit(f"Health-Check fehlgeschlagen ({BASE_URL}/health): {exc}")
+        sys.exit(f"Health-Check fehlgeschlagen ({client.base_url}health): {exc}")
+
+
+def _check_deployed_commit(client: httpx.Client, expected_commit: str | None) -> dict:
+    """Remote-Gegenstück zu _check_image: Ein Cloud-Deployment hat keinen lokalen Container
+    für docker inspect. Stattdessen meldet /ready den Commit des laufenden Images; der muss
+    zum gemessenen Code-Stand passen, sonst misst der Lauf einen anderen Code als behauptet."""
+    try:
+        resp = client.get("/ready", timeout=30.0)
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        sys.exit(f"Ready-Check fehlgeschlagen ({client.base_url}ready): {exc}")
+    deployed = resp.json().get("git_sha") or "unknown"
+    if expected_commit and not expected_commit.startswith(deployed):
+        sys.exit(
+            f"Deployter Commit {deployed} passt nicht zum Code-Stand {expected_commit[:7]}. "
+            "Erst deployen oder --code-commit setzen."
+        )
+    return {"image_id": None, "image_created": None, "deployed_git_sha": deployed}
 
 
 def _analyze(client: httpx.Client, ticket: dict) -> dict:
@@ -130,7 +154,7 @@ def _analyze(client: httpx.Client, ticket: dict) -> dict:
     t0 = time.perf_counter()
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            resp = client.post(f"{BASE_URL}/analyze", json=payload, timeout=REQUEST_TIMEOUT)
+            resp = client.post("/analyze", json=payload, timeout=REQUEST_TIMEOUT)
         except httpx.HTTPError as exc:
             status_code, response, error = None, None, f"{type(exc).__name__}: {exc}"
             break
@@ -178,6 +202,9 @@ def main() -> None:
     parser.add_argument("--code-commit", default=None,
                         help="Commit, aus dem das laufende Image gebaut wurde, falls nicht HEAD "
                              "(z.B. Baseline per git worktree); Image-Prüfung erfolgt dann gegen diesen Stand")
+    parser.add_argument("--base-url", default=BASE_URL,
+                        help=f"Adresse des Service (Default: {BASE_URL}). Bei einer entfernten URL wird statt "
+                             "des lokalen Docker-Images der Commit aus /ready geprüft.")
     args = parser.parse_args()
     tickets_path = REPO_DIR / args.tickets
     if not tickets_path.exists():
@@ -200,10 +227,17 @@ def main() -> None:
     todo = [t for t in tickets if t["ticket_id"] not in skip]
 
     code_commit = _run(["git", "rev-parse", args.code_commit]) if args.code_commit else None
-    image = _check_image(code_commit)
+    base_url = args.base_url.rstrip("/")
+    is_local = base_url.startswith(("http://localhost", "http://127.0.0.1"))
+    api_key = os.environ.get(API_KEY_ENV)
+    headers = {"X-API-Key": api_key} if api_key else {}
 
-    with httpx.Client() as client:
+    with httpx.Client(base_url=base_url, headers=headers) as client:
         _check_health(client)
+        if is_local:
+            image = _check_image(code_commit)
+        else:
+            image = _check_deployed_commit(client, code_commit or _git_commit())
         run_dir.mkdir(parents=True, exist_ok=True)
 
         # Bei --resume die ursprüngliche Startzeit und Notiz behalten.
@@ -220,6 +254,8 @@ def main() -> None:
             "tickets_path": args.tickets,
             "image_id":    image["image_id"],
             "image_created": image["image_created"],
+            "base_url":    base_url,
+            "deployed_git_sha": image.get("deployed_git_sha"),
             "n_tickets":   len(tickets),
         }
         _write_meta(meta_path, meta)  # sofort schreiben, damit auch ein abgebrochener Lauf Metadaten hat
