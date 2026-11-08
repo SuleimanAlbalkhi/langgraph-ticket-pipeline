@@ -268,6 +268,9 @@ def main() -> None:
             offset = len(tickets) - len(todo)
             for i, ticket in enumerate(todo, start=offset + 1):
                 row = _analyze(client, ticket)
+                if row["status_code"] == 401:
+                    sys.exit(f"HTTP 401: API-Key fehlt oder falsch. {API_KEY_ENV} muss im selben Terminal gesetzt "
+                             "sein und zum API_KEY des Service passen. Lauf-Ordner löschen und neu starten.")
                 out.write(json.dumps(row, ensure_ascii=False) + "\n")
                 out.flush()
                 suffix = f"  FEHLER: {row['error']}" if row["error"] else ""
