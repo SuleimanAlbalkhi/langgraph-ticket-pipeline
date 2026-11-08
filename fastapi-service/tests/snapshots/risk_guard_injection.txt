@@ -10,10 +10,10 @@ Kategorie: unknown
 Dringlichkeit: low
 
 Kritische Inhalte sind: rechtliche Drohungen, Betrugsvorwürfe,
-Sicherheitsrisiken, extrem verärgerte Kunden mit Eskalationsabsicht.
+Sicherheitsrisiken.
 
 Antworte NUR mit diesem JSON-Format:
 {
   "risk_flag": true oder false,
   "risk_reason": "Begründung wenn risk_flag true, sonst null"
-}
+}
