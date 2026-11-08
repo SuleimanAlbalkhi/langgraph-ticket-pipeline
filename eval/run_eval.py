@@ -205,6 +205,9 @@ def main() -> None:
     parser.add_argument("--base-url", default=BASE_URL,
                         help=f"Adresse des Service (Default: {BASE_URL}). Bei einer entfernten URL wird statt "
                              "des lokalen Docker-Images der Commit aus /ready geprüft.")
+    parser.add_argument("--verify-via-ready", action="store_true",
+                        help="Commit auch bei localhost über /ready prüfen statt per docker inspect "
+                             "(für einen lokal mit uvicorn gestarteten Service; GIT_SHA dort setzen)")
     args = parser.parse_args()
     tickets_path = REPO_DIR / args.tickets
     if not tickets_path.exists():
@@ -234,7 +237,7 @@ def main() -> None:
 
     with httpx.Client(base_url=base_url, headers=headers) as client:
         _check_health(client)
-        if is_local:
+        if is_local and not args.verify_via_ready:
             image = _check_image(code_commit)
         else:
             image = _check_deployed_commit(client, code_commit or _git_commit())
