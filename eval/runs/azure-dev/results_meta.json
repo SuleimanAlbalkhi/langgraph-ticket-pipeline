@@ -1,0 +1,16 @@
+{
+  "run_name": "azure-dev",
+  "note": "Modellwechsel qwen2.5:3b -> gpt-4.1-mini, Prompts und Code unveraendert",
+  "started_at": "2026-11-08T11:17:09+00:00",
+  "finished_at": "2026-11-08T11:19:22+00:00",
+  "model": "gpt-4.1-mini",
+  "hardware": "Azure OpenAI gpt-4.1-mini GlobalStandard (France Central), 100k TPM",
+  "git_commit": "7743d1a4fa1b3868fc5c7a55070aea40afbb8e60",
+  "code_commit": "7743d1a4fa1b3868fc5c7a55070aea40afbb8e60",
+  "tickets_path": "eval/tickets.jsonl",
+  "image_id": null,
+  "image_created": null,
+  "base_url": "http://localhost:8000",
+  "deployed_git_sha": "7743d1a4fa1b3868fc5c7a55070aea40afbb8e60",
+  "n_tickets": 50
+}

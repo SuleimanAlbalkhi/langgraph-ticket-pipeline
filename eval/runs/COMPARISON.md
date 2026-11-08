@@ -18,6 +18,7 @@ Eine Zeile pro Lauf, sortiert nach Startzeit, getrennt nach Ticket-Datei. Spalte
 | e5-keywords | 2026-10-30 | `fa1ae69` | E5: Keyword-Hygiene - unzumutbar/skandal raus, klage nicht in beklage (Basis e3 27dd315) | 50 / 0 | 42 von 50 (84 %) | 26 von 50 (52 %) | 9 von 11 (82 %) | 9 von 10 (90 %) | EVAL-014, EVAL-046 | EVAL-021 | 23 von 25 (92 %) | 2 von 25 (8 %) | 1.00 / 1.00 | 0 | 17.1 / 21.9 s |
 | e6e7-names | 2026-10-30 | `2d80c5c` | E6+E7: customer_name ohne Organisationen, Wortgrenzen, snap to text (Schwelle 0.85); Basis e5 2d80c5c | 50 / 0 | 42 von 50 (84 %) | 26 von 50 (52 %) | 9 von 11 (82 %) | 9 von 10 (90 %) | EVAL-014, EVAL-046 | EVAL-021 | 25 von 25 (100 %) | 0 von 25 (0 %) | 1.00 / 1.00 | 0 | 17.1 / 21.8 s |
 | e10-risk-split | 2026-10-30 | `0bcbf8f` | e10: Risk-Guard mit zwei engen Ja/Nein-Fragen (Drohung, Gefahr) bei allen Tickets, ohne urgency; Basis 0bcbf8f | 50 / 0 | 42 von 50 (84 %) | 25 von 50 (50 %) | 7 von 11 (64 %) | 7 von 7 (100 %) | EVAL-014, EVAL-025, EVAL-031, EVAL-045 | — | 25 von 25 (100 %) | 0 von 25 (0 %) | 1.00 / 1.00 | 0 | 17.0 / 20.5 s |
+| azure-dev | 2026-11-08 | `7743d1a` | Modellwechsel qwen2.5:3b -> gpt-4.1-mini, Prompts und Code unveraendert | 50 / 0 | 49 von 50 (98 %) | 40 von 50 (80 %) | 11 von 11 (100 %) | 11 von 15 (73 %) | — | EVAL-004, EVAL-006, EVAL-012, EVAL-021 | 25 von 25 (100 %) | 1 von 25 (4 %) | 1.00 / 1.00 | 0 | 2.3 / 3.8 s |
 
 ## Holdout (`eval/holdout/tickets.jsonl`)
 

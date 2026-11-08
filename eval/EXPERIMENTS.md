@@ -103,3 +103,14 @@ Ausdrücklich angeordnet; Stand eingefroren, kein Code-Tuning danach. 30 Holdout
 - **Fazit:** Belastbar sind die Latenz-Verbesserung und die robustere Nachbearbeitung (Namen, Keywords, kein toter Retry-Code); die Accuracy-Gewinne aus dem Dev-Set sind auf unabhängigen Daten nicht nachgewiesen.
 
 **Nachtrag (nach dem Schlusslauf):** Der HOLD-014-Fehler ist separat behoben — Listen in Extraktionsfeldern werden in `ground_to_text` elementweise gegen den Text geprüft und verbunden (`"RE-1, RE-2"`), `ExtractedData` verbindet Listen zusätzlich beim Egress statt mit HTTP 500 abzubrechen. Geprüft mit Unit-Tests und zwei eigenen Tickets mit 2 bzw. 3 Rechnungsnummern (beide HTTP 200, alle Nummern erhalten). Bewusst **nicht** erneut auf dem Holdout gemessen — der Schlusslauf bleibt der Stand `0bcbf8f`.
+
+## Cloud-Modell (gpt-4.1-mini auf Azure OpenAI)
+
+Ab hier läuft der Service mit `LLM_PROVIDER=azure`, Deployment `ticket-llm` = gpt-4.1-mini (2025-04-14, GlobalStandard, France Central). Läufe lokal per uvicorn gegen Azure, Commit-Prüfung über `/ready` (`--verify-via-ready`). Hintergrund zur Modellwahl: `DECISIONS.md`.
+
+## azure-dev — angenommen
+- **Änderung:** Modell qwen2.5:3b → gpt-4.1-mini; Prompts und Code unverändert (Stand e6e7-names + E9). Kapazität für den Lauf 100k TPM.
+- **Ergebnis:** Kategorie **49/50** (+7) · Urgency **40/50** (+14) · Risk Recall **11/11** (+2) · Precision 11/15 (vorher 9/10) · Name 25/25, **1 erfunden** · Latenz **2.3 / 3.8 s** (vorher 17.1 / 21.8 s) · 0 LLM-Fehler
+- **Entscheidung:** angenommen nach Rückfrage — formal gemischt (Precision −3 FP, Name +1 erfunden), aber Recall 11/11 und beide Verschlechterungen mit belegter Ursache; je ein Folge-Experiment (e11, e12).
+- **Grund:** Das Hochstufen bei Urgency ist weg: Fehler liegen fast alle eine Stufe daneben, in beide Richtungen (low↔medium 7, critical→high 2) statt systematisch nach oben wie bei qwen (medium→high 8/16).
+- **Auffällig:** Alle 4 FPs (004, 006, 012, 021) mit fast wörtlich gleicher Begründung „Extrem verärgerter Kunde mit Eskalationsabsicht“ — das steht als Kriterium im Risk-Prompt und widerspricht der Label-Spezifikation (Ärger ohne Drohung = false). gpt-4.1-mini befolgt den Prompt genauer als qwen. Erfundener Name 002: „Versandabteilung“ — der Organisationsfilter erkennt „abteilung“ nur als eigenes Wort, nicht in Zusammensetzungen.
