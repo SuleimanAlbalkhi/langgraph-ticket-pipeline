@@ -3,6 +3,28 @@
 Architektur- und Betriebsentscheidungen mit Begründung, neueste zuerst. Experimente zur Modellqualität
 stehen in `eval/EXPERIMENTS.md`.
 
+## 2026-11-08 — Container Apps im Standardmodus (Workload Profiles) statt Express
+
+**Entscheidung:** Container-Apps-Umgebung ausdrücklich mit `--environment-mode WorkloadProfiles`, App im kostenlosen
+Profil „Consumption“, systemzugewiesene Managed Identity, API-Key als Key-Vault-Referenz.
+
+**Begründung:** Ohne ausdrücklichen Modus legte die CLI eine Express-Umgebung an. Express unterstützt keine
+Key-Vault-Referenzen und keine systemzugewiesene Identität (nur benutzerzugewiesene) und kennt nur eine Revision.
+Damit hätte der API-Key als Klartext-Secret in die App kopiert werden müssen. Abrechnung und Skalierung auf null
+sind in beiden Modi gleich.
+
+**Konsequenz:** Den Modus bei jeder Neuanlage explizit setzen und mit `az containerapp env show --query
+properties.environmentMode` prüfen; Standardwerte der CLI können sich mit der Version ändern.
+
+## 2026-11-08 — Nur der Webhook-Workflow spricht mit der Cloud
+
+**Entscheidung:** In n8n zeigt nur der Webhook-Workflow (synthetische Testtickets) auf die Container App. Der
+IMAP-Workflow, der echte E-Mails abruft, bleibt beim lokalen Service mit Ollama.
+
+**Begründung:** Das Cloud-Deployment ist GlobalStandard (Verarbeitung ggf. außerhalb der EU, siehe unten); echte
+Personendaten gehören dort nicht hin. Der API-Key liegt in n8n als verschlüsseltes Credential, beschränkt auf den
+Hostnamen der App.
+
 ## 2026-11-07 — Cloud-Modell: gpt-4.1-mini als GlobalStandard in France Central
 
 **Entscheidung:** Azure-OpenAI-Deployment `ticket-llm` mit gpt-4.1-mini (2025-04-14), Typ GlobalStandard,
