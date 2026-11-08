@@ -18,4 +18,4 @@ Antworte NUR mit diesem JSON-Format:
 {
   "risk_flag": true oder false,
   "risk_reason": "Begründung wenn risk_flag true, sonst null"
-}
+}
