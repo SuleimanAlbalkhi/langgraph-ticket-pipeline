@@ -35,10 +35,12 @@ _VERBATIM_FIELDS: frozenset[str] = frozenset({"customer_name", "invoice_number",
 
 # Organisations-/Abteilungs-Marker: ein customer_name damit ist eine Signatur, keine Person
 # (Eval: "Einkauf, Röder Maschinenbau GmbH" als Name). Ganzes Wort, ohne Groß/Klein.
+# "abteilung" auch als Wortende, damit Komposita wie "Versandabteilung" oder
+# "Personalabteilung" greifen (e12, EVAL-002).
 _ORG_MARKER_PATTERN = re.compile(
     r"(?<!\w)(?:gmbh|ag|kg|ohg|gbr|e\.\s?v\.|ug|se|mbh|inc|ltd|"
-    r"abteilung|einkauf|buchhaltung|verwaltung|vertrieb|betriebsrat|geschäftsführung|"
-    r"sekretariat|poststelle|team|filiale|zentrale|kundenservice|personalabteilung)(?!\w)",
+    r"\w*abteilung|einkauf|buchhaltung|verwaltung|vertrieb|betriebsrat|geschäftsführung|"
+    r"sekretariat|poststelle|team|filiale|zentrale|kundenservice)(?!\w)",
     re.IGNORECASE,
 )
 

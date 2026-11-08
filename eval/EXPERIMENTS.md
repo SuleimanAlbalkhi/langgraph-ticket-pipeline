@@ -114,3 +114,15 @@ Ab hier läuft der Service mit `LLM_PROVIDER=azure`, Deployment `ticket-llm` = g
 - **Entscheidung:** angenommen nach Rückfrage — formal gemischt (Precision −3 FP, Name +1 erfunden), aber Recall 11/11 und beide Verschlechterungen mit belegter Ursache; je ein Folge-Experiment (e11, e12).
 - **Grund:** Das Hochstufen bei Urgency ist weg: Fehler liegen fast alle eine Stufe daneben, in beide Richtungen (low↔medium 7, critical→high 2) statt systematisch nach oben wie bei qwen (medium→high 8/16).
 - **Auffällig:** Alle 4 FPs (004, 006, 012, 021) mit fast wörtlich gleicher Begründung „Extrem verärgerter Kunde mit Eskalationsabsicht“ — das steht als Kriterium im Risk-Prompt und widerspricht der Label-Spezifikation (Ärger ohne Drohung = false). gpt-4.1-mini befolgt den Prompt genauer als qwen. Erfundener Name 002: „Versandabteilung“ — der Organisationsfilter erkennt „abteilung“ nur als eigenes Wort, nicht in Zusammensetzungen.
+
+## e11-risk-anger — angenommen
+- **Änderung:** Risk-Prompt ohne das Kriterium „extrem verärgerte Kunden mit Eskalationsabsicht“; Rest unverändert (bewusst minimal, anders als e4); Basis azure-dev.
+- **Ergebnis:** Kategorie 49/50 · Urgency 40/50 · Risk Recall **11/11** · Precision **11/11** (vorher 11/15) · Name 25/25, 0 erfunden · Latenz 2.3 / 3.2 s
+- **Entscheidung:** angenommen — alle 4 FPs weg, Recall unverändert 11/11.
+- **Grund:** Genau die vier Tickets mit der Begründung „verärgerter Kunde“ (004, 006, 012, 021) kippen auf false; kein anderes Ticket ändert risk_flag, Kategorie oder Urgency. Der Prompt passt jetzt zur Label-Spezifikation.
+- **Auffällig:** EVAL-002 liefert diesmal keinen Namen („Versandabteilung“ in azure-dev) — ohne Änderung an Extractor oder Nachbearbeitung. Auch bei temperature 0 antwortet das Cloud-Modell nicht vollständig deterministisch; Einzel-Flips beim Namen sind Rauschen, nicht e11.
+
+## e12-org-compounds — angenommen (ohne Lauf)
+- **Änderung:** Organisationsfilter erkennt „abteilung“ auch als Wortende (`\w*abteilung`), damit Komposita wie „Versandabteilung“ als Signatur gelten; „personalabteilung“ als Einzelwort entfällt (abgedeckt).
+- **Entscheidung:** angenommen ohne Lauf, wie E9 — deterministische Nachbearbeitung, im Lauf nicht messbar, weil das Modell den Namen in e11 ohnehin nicht geliefert hat.
+- **Prüfung:** zwei neue Unit-Tests (Versandabteilung, Personalabteilung); keiner der 25 Kundennamen in den Dev-Labels trifft den erweiterten Filter.
