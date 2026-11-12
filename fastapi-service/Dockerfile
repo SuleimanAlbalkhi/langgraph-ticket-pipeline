@@ -17,6 +17,12 @@ RUN useradd --create-home --uid 1000 appuser
 COPY --chown=appuser:appuser app/ ./app/
 USER appuser
 
+# Commit, aus dem das Image gebaut wurde. Wird beim Build übergeben
+# (docker build --build-arg GIT_SHA=$(git rev-parse --short HEAD) ...) und von /ready
+# zurückgegeben — so prüft der Deploy-Smoke-Test, ob die neue Revision antwortet.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

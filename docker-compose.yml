@@ -26,6 +26,8 @@ services:
       # App-seitige Drossel (Load-Shedding). Default 2 ist auf ~4 GB VRAM abgestimmt,
       # da eine einzelne Analyse intern schon bis zu 3 parallele LLM-Votes auslöst.
       MAX_CONCURRENT_ANALYSES: "${MAX_CONCURRENT_ANALYSES:-2}"
+      # API-Key-Schutz für /analyze; leer = aus. n8n muss ihn dann im Header X-API-Key schicken.
+      API_KEY: "${API_KEY:-}"
       # Hinweis: Der tatsächliche GPU-Parallelitätsgrad wird von OLLAMA_NUM_PARALLEL
       # gesteuert — das ist KEINE Variable dieses Containers, sondern gehört auf den
       # HOST, wo `ollama serve` läuft (Ollama ist hier nicht containerisiert).

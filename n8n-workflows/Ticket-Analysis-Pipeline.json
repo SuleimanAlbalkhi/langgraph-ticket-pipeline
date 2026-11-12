@@ -38,7 +38,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"ticket_id\": \"{{ $json.body.ticket_id }}\",\n  \"raw_text\": \"{{ $json.body.raw_text }}\",\n  \"source\": \"{{ $json.body.source }}\"\n}",
+        "jsonBody": "={{ JSON.stringify({ ticket_id: $json.body.ticket_id, raw_text: $json.body.raw_text, source: $json.body.source }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -48,7 +48,10 @@
         0
       ],
       "id": "82cdcf17-88e2-4db4-9ed3-d7d8f9a35953",
-      "name": "HTTP Request"
+      "name": "HTTP Request",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "parameters": {

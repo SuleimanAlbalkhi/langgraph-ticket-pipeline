@@ -16,6 +16,9 @@ def _name(value: str, raw: str) -> str | None:
         ("Einkauf, Röder Maschinenbau GmbH", "Bitte um Angebot.\nMit freundlichen Grüßen\nEinkauf, Röder Maschinenbau GmbH"),
         ("Betriebsrat der Spedition Hollmann", "Ist eine Führung möglich?\nViele Grüße\nBetriebsrat der Spedition Hollmann"),
         ("Buchhaltung", "Rechnung falsch.\nBuchhaltung\nMeyer & Co. KG"),
+        # e12: Kompositum auf -abteilung (EVAL-002 mit gpt-4.1-mini)
+        ("Versandabteilung", "Drucker defekt.\nMfG\nVersandabteilung, Holzwerk Brenner GmbH"),
+        ("Personalabteilung", "Frage zur Abrechnung.\nPersonalabteilung\nMuster AG"),
     ],
 )
 def test_organisation_is_dropped(value, raw):

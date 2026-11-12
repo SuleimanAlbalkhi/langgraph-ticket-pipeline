@@ -22,7 +22,7 @@ N_VOTES = 1
 
 # Singleton — temperature 0: bei nur einem Lauf gibt es nichts zu streuen.
 # Für N_VOTES > 1 wäre temperature > 0 Voraussetzung, sonst sind alle Läufe identisch.
-_llm = build_json_llm(settings.ollama_fast_model, temperature=0)
+_llm = build_json_llm(settings.fast_model, temperature=0)
 
 
 async def _classify_once(prompt: str, run_idx: int) -> tuple[str, str] | None:

@@ -15,7 +15,7 @@ Kategorie: {category}
 Dringlichkeit: {urgency}
 
 Kritische Inhalte sind: rechtliche Drohungen, Betrugsvorwürfe,
-Sicherheitsrisiken, extrem verärgerte Kunden mit Eskalationsabsicht.
+Sicherheitsrisiken.
 
 Antworte NUR mit diesem JSON-Format:
 {{
