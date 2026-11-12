@@ -283,3 +283,45 @@ bleibt beim lokalen Service (`http://fastapi-service:8000/analyze`).
 - Credential „Header Auth“ `Ticket-Pipeline Cloud`: Header `X-API-Key`, Wert aus dem Key Vault, Allowed Domains = Hostname der App
 - HTTP-Knoten: URL `https://<fqdn>/analyze`, Authentication Header Auth, Timeout 60000 ms (Kaltstart), Retry On Fail 3× / 5 s
 - n8n ohne lokalen FastAPI-Container starten: `docker compose up -d --no-deps n8n`
+
+## CI/CD (Block C)
+
+### Deploy-Identität mit OIDC
+
+GitHub meldet sich ohne Passwort an: Azure vertraut einem kurzlebigen GitHub-Token, wenn es aus diesem Repo und
+von `main` kommt (Federated Credential). Contributor nur auf der Ressourcengruppe — kann keine Rollen vergeben.
+
+```powershell
+az identity create --name id-github-deploy --resource-group rg-ticket-pipeline --location francecentral
+$principalId = az identity show --name id-github-deploy --resource-group rg-ticket-pipeline --query principalId --output tsv
+az identity federated-credential create --name github-main --identity-name id-github-deploy --resource-group rg-ticket-pipeline `
+  --issuer https://token.actions.githubusercontent.com `
+  --subject repo:SuleimanAlbalkhi/langgraph-ticket-pipeline:ref:refs/heads/main `
+  --audiences api://AzureADTokenExchange
+$rg = az group show --name rg-ticket-pipeline --query id --output tsv
+az role assignment create --role Contributor --assignee-object-id $principalId --assignee-principal-type ServicePrincipal --scope $rg
+```
+
+**Im Portal:** Managed Identities → + Create; dann Federated credentials → „GitHub Actions deploying Azure resources“
+
+### GitHub
+
+- Repository secrets (Settings → Secrets and variables → Actions → **Secrets**, nicht Variables):
+  `AZURE_CLIENT_ID` (clientId der Identität), `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
+- Paket `ticket-pipeline-api` → Package settings → Manage Actions access → Repo mit Rolle **Write**
+  (sonst `permission_denied: write_package`, weil das Paket mit einem persönlichen Token angelegt wurde)
+
+### Ablauf (`.github/workflows/ci.yml`, Job `deploy`)
+
+Nur nach grünem Test-Job und nur bei Push auf `main`: Image bauen und mit `GITHUB_TOKEN` nach ghcr.io pushen
+(Tag = Commit-SHA) → `azure/login` per OIDC → `az containerapp update --image` → Smoke-Test fragt `/ready` ab,
+bis der neue Commit gemeldet wird (max. 5 Minuten).
+
+### Rollback
+
+```powershell
+az containerapp update --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --image ghcr.io/suleimanalbalkhi/ticket-pipeline-api:<vorheriger-sha>
+Invoke-RestMethod "$url/ready"   # git_sha zeigt, welcher Stand live ist
+```
+
+Gilt bis zum nächsten Push auf `main`; den Fehler danach auf `main` beheben (z. B. `git revert`).
