@@ -34,3 +34,71 @@ jobs:
 
       - name: Docker build
         run: docker build -t hybrid-ai-orchestrator-fastapi .
+
+  # Deployment nach Azure Container Apps. Läuft nur, wenn der Test-Job grün ist (needs),
+  # und nur bei einem Push auf main — nicht bei Pull Requests oder anderen Branches.
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # Nie zwei Deployments gleichzeitig; ein laufendes wird nicht abgebrochen.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write    # OIDC-Token von GitHub anfordern (Anmeldung bei Azure ohne Passwort)
+      packages: write    # Image nach ghcr.io pushen, mit dem eingebauten GITHUB_TOKEN
+    env:
+      IMAGE: ghcr.io/suleimanalbalkhi/ticket-pipeline-api:${{ github.sha }}
+      APP: ca-ticket-pipeline
+      RG: rg-ticket-pipeline
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tag = Commit-SHA; GIT_SHA landet im Image und wird von /ready zurückgegeben.
+      - name: Image bauen und pushen
+        run: |
+          docker build \
+            --build-arg GIT_SHA=${{ github.sha }} \
+            --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
+            -t "$IMAGE" fastapi-service
+          docker push "$IMAGE"
+
+      # OIDC: GitHub stellt ein kurzlebiges Token aus, Azure prüft es gegen das Federated
+      # Credential von id-github-deploy (nur dieses Repo, nur main). Kein Passwort in GitHub.
+      - name: Login Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Container App aktualisieren
+        run: |
+          az extension add --name containerapp --upgrade --only-show-errors
+          az containerapp update --name "$APP" --resource-group "$RG" --image "$IMAGE" --output none
+
+      # az containerapp update kann zurückkommen, bevor die neue Revision Verkehr bekommt.
+      # Deshalb so lange /ready abfragen, bis es den neuen Commit meldet (max. 5 Minuten).
+      - name: Smoke-Test
+        run: |
+          URL="https://$(az containerapp show --name "$APP" --resource-group "$RG" --query properties.configuration.ingress.fqdn --output tsv)"
+          for i in $(seq 1 30); do
+            SHA=$(curl -fsS --max-time 30 "$URL/ready" | jq -r '.git_sha' 2>/dev/null || true)
+            echo "Versuch $i: /ready meldet ${SHA:-keine Antwort}"
+            if [ "$SHA" = "${{ github.sha }}" ]; then
+              echo "Neue Revision ist live."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Neue Revision meldet nach 5 Minuten nicht den Commit ${{ github.sha }}"
+          exit 1
