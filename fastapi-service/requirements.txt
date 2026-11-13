@@ -8,4 +8,8 @@ langchain-ollama==0.3.3
 langchain-openai==0.3.35
 azure-identity==1.27.0
 httpx==0.28.1
+# Tracing: langfuse v4, weil der v5-Handler langchain-core>=1 verlangt und das Projekt auf 0.3 steht
+langfuse==4.18.0
+# Der v4-CallbackHandler importiert das Paket langchain (nicht nur langchain-core)
+langchain==0.3.30
 python-multipart==0.0.20

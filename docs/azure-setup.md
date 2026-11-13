@@ -139,10 +139,15 @@ In einem zweiten Terminal:
 
 ```powershell
 Invoke-RestMethod http://localhost:8000/ready
-Invoke-RestMethod http://localhost:8000/analyze -Method Post -ContentType "application/json" `
+$body = '{"ticket_id": "T-1", "raw_text": "Seit dem Update startet die App nicht mehr, ich kann nicht arbeiten."}'
+Invoke-RestMethod http://localhost:8000/analyze -Method Post -ContentType "application/json; charset=utf-8" `
   -Headers @{ "X-API-Key" = "lokal-test" } `
-  -Body '{"ticket_id": "T-1", "raw_text": "Seit dem Update startet die App nicht mehr, ich kann nicht arbeiten."}'
+  -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
 ```
+
+Den Body immer als UTF-8-Bytes schicken: Windows PowerShell 5.1 kodiert einen String-Body nicht als UTF-8, bei
+Umlauten oder ß antwortet FastAPI dann mit „There was an error parsing the body“. Das gilt für alle
+`Invoke-RestMethod`-Beispiele in dieser Datei.
 
 ## Eval gegen das Azure-Modell (lokal)
 
@@ -272,7 +277,8 @@ az containerapp ingress enable --name ca-ticket-pipeline --resource-group rg-tic
 $url = "https://" + (az containerapp show --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --query properties.configuration.ingress.fqdn --output tsv)
 Invoke-RestMethod "$url/ready"
 $key = az keyvault secret show --vault-name kv-ticketpipe-sa --name api-key --query value --output tsv
-Invoke-RestMethod "$url/analyze" -Method Post -ContentType "application/json" -Headers @{ "X-API-Key" = $key } -Body '{"ticket_id": "T-1", "raw_text": "Seit dem Update startet die App nicht mehr, ich kann nicht arbeiten."}'
+$body = '{"ticket_id": "T-1", "raw_text": "Seit dem Update startet die App nicht mehr, ich kann nicht arbeiten."}'
+Invoke-RestMethod "$url/analyze" -Method Post -ContentType "application/json; charset=utf-8" -Headers @{ "X-API-Key" = $key } -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
 ```
 
 ### n8n an die Cloud anschließen
@@ -283,3 +289,234 @@ bleibt beim lokalen Service (`http://fastapi-service:8000/analyze`).
 - Credential „Header Auth“ `Ticket-Pipeline Cloud`: Header `X-API-Key`, Wert aus dem Key Vault, Allowed Domains = Hostname der App
 - HTTP-Knoten: URL `https://<fqdn>/analyze`, Authentication Header Auth, Timeout 60000 ms (Kaltstart), Retry On Fail 3× / 5 s
 - n8n ohne lokalen FastAPI-Container starten: `docker compose up -d --no-deps n8n`
+
+## CI/CD (Block C)
+
+### Deploy-Identität mit OIDC
+
+GitHub meldet sich ohne Passwort an: Azure vertraut einem kurzlebigen GitHub-Token, wenn es aus diesem Repo und
+von `main` kommt (Federated Credential). Contributor nur auf der Ressourcengruppe — kann keine Rollen vergeben.
+
+```powershell
+az identity create --name id-github-deploy --resource-group rg-ticket-pipeline --location francecentral
+$principalId = az identity show --name id-github-deploy --resource-group rg-ticket-pipeline --query principalId --output tsv
+az identity federated-credential create --name github-main --identity-name id-github-deploy --resource-group rg-ticket-pipeline `
+  --issuer https://token.actions.githubusercontent.com `
+  --subject repo:SuleimanAlbalkhi/langgraph-ticket-pipeline:ref:refs/heads/main `
+  --audiences api://AzureADTokenExchange
+$rg = az group show --name rg-ticket-pipeline --query id --output tsv
+az role assignment create --role Contributor --assignee-object-id $principalId --assignee-principal-type ServicePrincipal --scope $rg
+```
+
+**Im Portal:** Managed Identities → + Create; dann Federated credentials → „GitHub Actions deploying Azure resources“
+
+### GitHub
+
+- Repository secrets (Settings → Secrets and variables → Actions → **Secrets**, nicht Variables):
+  `AZURE_CLIENT_ID` (clientId der Identität), `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
+- Paket `ticket-pipeline-api` → Package settings → Manage Actions access → Repo mit Rolle **Write**
+  (sonst `permission_denied: write_package`, weil das Paket mit einem persönlichen Token angelegt wurde)
+
+### Ablauf (`.github/workflows/ci.yml`, Job `deploy`)
+
+Nur nach grünem Test-Job und nur bei Push auf `main`: Image bauen und mit `GITHUB_TOKEN` nach ghcr.io pushen
+(Tag = Commit-SHA) → `azure/login` per OIDC → `az containerapp update --image` → Smoke-Test fragt `/ready` ab,
+bis der neue Commit gemeldet wird (max. 5 Minuten).
+
+### Rollback
+
+```powershell
+az containerapp update --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --image ghcr.io/suleimanalbalkhi/ticket-pipeline-api:<vorheriger-sha>
+Invoke-RestMethod "$url/ready"   # git_sha zeigt, welcher Stand live ist
+```
+
+Gilt bis zum nächsten Push auf `main`; den Fehler danach auf `main` beheben (z. B. `git revert`).
+
+## Observability (Block D)
+
+Jede Ticket-Analyse wird ein Trace in Langfuse Cloud (EU): ein Span pro Node, eine Generation pro LLM-Aufruf mit
+Latenz, Modell, Tokens und Kosten. Ticketinhalte werden vor dem Export maskiert (Allowlist in
+`app/observability.py`). Ein Log-Suchalarm meldet Modellausfälle (`LLM_FAILURE`) per E-Mail. Entscheidungen und
+Begründungen: siehe `DECISIONS.md`.
+
+### 1. Langfuse-Projekt
+
+Konto in der Region **EU** (Plan Hobby), Projekt `ticket-pipeline`, dann API Keys anlegen. Den Secret Key zeigt
+Langfuse nur einmal an.
+
+**In Langfuse:** cloud.langfuse.com → Sign up (Region EU) → New project `ticket-pipeline` → Settings → API Keys → Create new API keys
+
+### 2. Lokal testen
+
+Werte nach `fastapi-service\.env` (gitignored; der Service liest `.env` aus seinem Arbeitsverzeichnis):
+
+```powershell
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+TICKET_ID_HMAC_KEY=<python -c "import secrets; print(secrets.token_hex(32))">
+```
+
+`LANGFUSE_TRACING_ENVIRONMENT` lokal nicht setzen, der Default ist `local`. Dann den Service starten
+(`.\scripts\start-azure-service.ps1` oder uvicorn) und ein Ticket schicken (siehe „Service lokal im Azure-Modus starten“).
+Die Startzeile im Log muss `Tracing: an (…, Environment local, Inhalte maskiert, HMAC-Schlüssel vorhanden)` zeigen.
+
+**In Langfuse:** Projekt → Tracing → Traces → Environment `local` → Trace `ticket-analysis` öffnen. Prüfen:
+- Spans `classifier`, `extractor`, `risk_guard`, darunter Generations mit Modell, Tokens und Kosten
+- Input/Output überall `[redacted]`, **nirgends Tickettext**
+- Tags `azure`/`ollama` und Quelle, Metadaten `ticket_ref`, Release = Commit-SHA
+
+Für denselben Test lokal den HMAC-Schlüssel nehmen, der später auch im Key Vault liegt, oder bewusst einen eigenen.
+Die Ticket-Referenz ist nur mit demselben Schlüssel vergleichbar.
+
+### 3. Key Vault und Container App
+
+Drei Secrets: Langfuse Public Key, Langfuse Secret Key, HMAC-Schlüssel. Werte über `Read-Host`, damit sie nicht in der
+Shell-Historie landen. Die App-Identität hat schon „Key Vault Secrets User“ (Block B).
+
+```powershell
+$v = Read-Host -AsSecureString "Langfuse Public Key"
+az keyvault secret set --vault-name kv-ticketpipe-sa --name langfuse-public-key --value ([System.Net.NetworkCredential]::new("", $v).Password) --output none
+$v = Read-Host -AsSecureString "Langfuse Secret Key"
+az keyvault secret set --vault-name kv-ticketpipe-sa --name langfuse-secret-key --value ([System.Net.NetworkCredential]::new("", $v).Password) --output none
+$v = python -c "import secrets; print(secrets.token_hex(32))"
+az keyvault secret set --vault-name kv-ticketpipe-sa --name ticket-id-hmac-key --value $v --output none
+Remove-Variable v
+
+$kvUrl = "https://kv-ticketpipe-sa.vault.azure.net/secrets"
+az containerapp secret set --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --secrets `
+  "langfuse-public-key=keyvaultref:$kvUrl/langfuse-public-key,identityref:system" `
+  "langfuse-secret-key=keyvaultref:$kvUrl/langfuse-secret-key,identityref:system" `
+  "ticket-id-hmac-key=keyvaultref:$kvUrl/ticket-id-hmac-key,identityref:system"
+az containerapp update --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --set-env-vars `
+  LANGFUSE_PUBLIC_KEY=secretref:langfuse-public-key `
+  LANGFUSE_SECRET_KEY=secretref:langfuse-secret-key `
+  TICKET_ID_HMAC_KEY=secretref:ticket-id-hmac-key `
+  LANGFUSE_TRACING_ENVIRONMENT=production
+```
+
+**Im Portal:** Key vaults → `kv-ticketpipe-sa` → Secrets → + Generate/Import; Container App → Settings → Secrets → + Add
+(Key Vault reference, Managed identity: System assigned); Container App → Containers → Environment variables → Reference a secret
+
+Umgebungsvariablen bleiben bei `az containerapp update --image` im Deploy-Job erhalten, die Pipeline muss nichts
+davon kennen. Prüfen: Log der neuen Revision zeigt `Tracing: an (…, Environment production, Inhalte maskiert,
+HMAC-Schlüssel vorhanden)`; in Langfuse erscheint nach einem Ticket ein Trace im Environment `production`.
+
+Ticket-Referenz zu einer Ticket-ID nachschlagen (gibt nur den gekürzten HMAC aus, nie den Schlüssel):
+
+```powershell
+.\scripts\trace-ref.ps1 -TicketId T-1
+```
+
+**In Langfuse:** Traces → Suche bzw. Filter Metadata `ticket_ref` = Ausgabe des Skripts
+
+### 4. Rotation des Langfuse-Schlüsselpaars
+
+Das Paar wird gemeinsam rotiert. Laufende Container übernehmen neue Key-Vault-Werte erst nach einem Neustart.
+
+1. In Langfuse ein neues Schlüsselpaar anlegen (das alte bleibt vorerst gültig).
+2. Beide Secrets im Key Vault neu setzen (Befehle aus Abschnitt 3, nur die beiden `langfuse-*`-Zeilen).
+3. Neustart:
+
+   ```powershell
+   $rev = az containerapp show --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --query properties.latestRevisionName --output tsv
+   az containerapp revision restart --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --revision $rev
+   ```
+
+4. Ein Ticket schicken, Trace in Langfuse prüfen, dann das alte Paar in Langfuse löschen.
+
+**Im Portal:** Container App → Revisions and replicas → aktive Revision → Restart
+
+Den HMAC-Schlüssel nicht routinemäßig rotieren: Danach passen alte Ticket-Referenzen nicht mehr zu neuen.
+
+### 5. Alarm-Test Schritt A: Abfrage prüfen
+
+Tabellen und Spalten heißen je nach Log-Ziel der Umgebung unterschiedlich. Erst die Abfrage im Arbeitsbereich
+ausführen, dann die Regel mit **genau der Variante** anlegen, die funktioniert. Die Abfrage beginnt mit der Tabelle.
+
+Standardvariante:
+
+```kusto
+ContainerAppConsoleLogs_CL
+| where ContainerAppName_s == "ca-ticket-pipeline" and Log_s has "LLM_FAILURE"
+| project TimeGenerated, Log_s
+```
+
+Meldet sie „Tabelle nicht gefunden“, die Variante ohne Suffix:
+
+```kusto
+ContainerAppConsoleLogs
+| where ContainerAppName == "ca-ticket-pipeline" and Log has "LLM_FAILURE"
+| project TimeGenerated, Log
+```
+
+```powershell
+$ws = "workspace-rgticketpipelineLE9z"
+$wsId = az monitor log-analytics workspace show --resource-group rg-ticket-pipeline --workspace-name $ws --query customerId --output tsv
+az monitor log-analytics query --workspace $wsId --analytics-query "ContainerAppConsoleLogs_CL | where ContainerAppName_s == 'ca-ticket-pipeline' and Log_s has 'LLM_FAILURE' | project TimeGenerated, Log_s" --timespan P7D
+```
+
+**Im Portal:** Log Analytics workspaces → `workspace-rgticketpipelineLE9z` → Logs → Abfrage einfügen → Run
+
+Ohne bisherige Ausfälle ist ein leeres Ergebnis richtig; entscheidend ist, dass die Abfrage ohne Fehler läuft.
+
+### 6. Alarm anlegen
+
+Action Group mit E-Mail, dann die Regel: Schwelle > 0, Fenster und Intervall 15 min, Severity 2, Entwarnung an.
+Bei einem Komplettausfall erzeugt ein Ticket nur 2 `LLM_FAILURE`-Zeilen; jede höhere Schwelle wäre bei Demo-Verkehr blind.
+
+```powershell
+az monitor action-group create --name ag-ticket-pipeline --resource-group rg-ticket-pipeline `
+  --short-name ticketalarm --action email betreiber <eigene-mail>
+$ag = az monitor action-group show --name ag-ticket-pipeline --resource-group rg-ticket-pipeline --query id --output tsv
+$wsRes = az monitor log-analytics workspace show --resource-group rg-ticket-pipeline --workspace-name $ws --query id --output tsv
+
+az monitor scheduled-query create --name alert-llm-failure --resource-group rg-ticket-pipeline `
+  --scopes $wsRes `
+  --condition "count 'Placeholder_1' > 0" `
+  --condition-query Placeholder_1="ContainerAppConsoleLogs_CL | where ContainerAppName_s == 'ca-ticket-pipeline' and Log_s has 'LLM_FAILURE'" `
+  --evaluation-frequency 15m --window-size 15m --severity 2 `
+  --action-groups $ag --auto-mitigate true `
+  --description "Modellausfall: LLM_FAILURE im Log von ca-ticket-pipeline"
+```
+
+`--condition-query` durch die Variante aus Schritt A ersetzen, falls dort die Tabelle ohne Suffix funktioniert hat.
+`az monitor scheduled-query` ist eine CLI-Erweiterung und wird beim ersten Aufruf automatisch installiert.
+Die Action Group schickt sofort eine Bestätigungs-Mail („added to action group“).
+
+**Im Portal:** Monitor → Alerts → Action groups → + Create (Notifications: Email); Monitor → Alerts → + Create → Alert rule →
+Scope: Log-Analytics-Arbeitsbereich → Condition: Custom log search (Abfrage, Measurement Count, Threshold > 0,
+Frequency 15 min, Lookback 15 min) → Actions: Action Group → Details: Severity 2, „Automatically resolve alerts“ an
+
+### 7. Alarm-Test Schritt B: echter Fehler
+
+Prüft die ganze Kette inklusive Entwarnung. Genau diese Reihenfolge:
+
+```powershell
+$url = "https://" + (az containerapp show --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --query properties.configuration.ingress.fqdn --output tsv)
+$key = az keyvault secret show --vault-name kv-ticketpipe-sa --name api-key --query value --output tsv
+$body = '{"ticket_id": "ALARM-TEST-1", "raw_text": "Seit dem Update startet die App nicht mehr, ich kann nicht arbeiten."}'
+
+# (1) Deployment-Namen auf einen nicht existierenden Wert setzen
+az containerapp update --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --set-env-vars AZURE_FAST_DEPLOYMENT=gibt-es-nicht
+# (2) Ein Ticket schicken (Antwort 200 mit Fallback-Werten; im Log 2 LLM_FAILURE-Zeilen)
+Invoke-RestMethod "$url/analyze" -Method Post -ContentType "application/json; charset=utf-8" -Headers @{ "X-API-Key" = $key } -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
+# (3) SOFORT zurücksetzen: Variable entfernen (existierte vorher nicht; ohne sie nimmt der Code ticket-llm)
+az containerapp update --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --remove-env-vars AZURE_FAST_DEPLOYMENT
+# (3b) Warten, bis die neueste Revision 100 % Verkehr hat
+az containerapp revision list --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --query "[].{name:name, active:properties.active, traffic:properties.trafficWeight, created:properties.createdTime}" --output table
+# (4) Prüfen, dass alles wieder läuft: /ready und ein zweites Ticket mit echter Kategorie statt Fallback
+Invoke-RestMethod "$url/ready"
+Invoke-RestMethod "$url/analyze" -Method Post -ContentType "application/json; charset=utf-8" -Headers @{ "X-API-Key" = $key } -Body ([System.Text.Encoding]::UTF8.GetBytes($body.Replace("ALARM-TEST-1", "ALARM-TEST-2")))
+```
+
+`az containerapp update` kehrt zurück, bevor die neue Revision Verkehr bekommt (gemessen: ca. 1 Minute). Vor dem
+Kontrollticket mit `az containerapp revision list` prüfen, dass die neueste Revision 100 % Verkehr hat, sonst
+antwortet noch die alte Revision mit dem falschen Deployment.
+
+5. Auf die Alarm-Mail warten: bis ca. 20 min (Fenster plus Log-Latenz).
+6. Auf die Entwarnung warten: kommt, sobald ein 15-min-Fenster ohne `LLM_FAILURE` ausgewertet wurde.
+
+**Wichtig:** `/ready` prüft das Modell nicht (bewusst, sonst kostet jede Probe Tokens). Ein vergessenes Zurücksetzen
+in Schritt 3 fällt nur durch den Alarm auf.
+
+**Im Portal:** Monitor → Alerts → Alert-Liste (Status Fired → Resolved); Container App → Revisions and replicas (neue Revision je `update`)

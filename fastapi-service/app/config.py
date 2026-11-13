@@ -56,6 +56,22 @@ class Settings(BaseSettings):
     # neue Revision antwortet und nicht noch die alte.
     git_sha: str = "unknown"
 
+    # Tracing mit Langfuse Cloud (EU). Aus, solange nicht beide Schlüssel gesetzt sind:
+    # Ein halber Schlüsselsatz soll nicht zu Fehlern bei jedem Request führen.
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_base_url: str   = "https://cloud.langfuse.com"   # EU-Region
+    # Standard: Inhalte maskiert, dieselbe DSGVO-Regel wie bei den Logs. true sendet
+    # Ticketinhalte an Langfuse und ist nur für synthetische Demo-Tickets gedacht.
+    langfuse_capture_content: bool = False
+    # Stufe, nicht Provider: lokal "local", in der Container App "production". Eigenes Feld,
+    # weil das SDK nur os.environ liest, die .env aber nur hier ankommt; ohne Default landeten
+    # lokale Läufe in "default". Environments lassen sich in Langfuse nicht löschen.
+    langfuse_tracing_environment: str = "local"
+    # Schlüssel für den HMAC der Ticket-ID in den Trace-Metadaten. Ein einfacher Hash wäre bei
+    # vorhersagbaren IDs (EVAL-001 …) durch Durchprobieren umkehrbar. Leer = keine Ticket-ID.
+    ticket_id_hmac_key: str = ""
+
     # Überlastschutz — globale Begrenzung gleichzeitiger Analysen schützt den
     # GPU-Engpass. Bekommt ein Request nach acquire_timeout keinen freien Slot,
     # antwortet der Service mit 503 (Load-Shedding) statt Requests aufzustauen.
@@ -78,6 +94,11 @@ class Settings(BaseSettings):
     def smart_model(self) -> str:
         """Modell bzw. Deployment für den Risk Guard (Node 3)."""
         return self.azure_smart_deployment if self.llm_provider == "azure" else self.ollama_smart_model
+
+    @property
+    def tracing_enabled(self) -> bool:
+        """Tracing nur mit vollständigem Langfuse-Schlüsselpaar."""
+        return bool(self.langfuse_public_key and self.langfuse_secret_key)
 
 
 @lru_cache
