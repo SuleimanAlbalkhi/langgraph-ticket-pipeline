@@ -87,6 +87,8 @@ Deployment-Namen (`AZURE_FAST_DEPLOYMENT`), sofort zurückgesetzt, Warten auf Al
 - Tabellen und Spalten heißen je nach Log-Ziel der Umgebung unterschiedlich (`ContainerAppConsoleLogs_CL` vs.
   `ContainerAppConsoleLogs`); eine Regel mit falscher Tabelle meldet nie etwas.
 - Der echte Fehler prüft die ganze Kette inklusive Entwarnung.
+- Am 13.11. in der Cloud gemessen: Ein Ticket bei ausgefallenem Modell erzeugt genau 2 `LLM_FAILURE`-Zeilen
+  (Classifier, Extractor; Risk Guard übersprungen). Die Zeilen waren nach wenigen Minuten im Arbeitsbereich abfragbar.
 
 **Konsequenzen:** `/ready` prüft das Modell nicht; ein vergessenes Zurücksetzen fällt nur durch den Alarm auf.
 
@@ -106,8 +108,8 @@ nach der Prüfung verworfen.
 
 **Konsequenzen:**
 - Bei gescheiterten Aufrufen (keine Antwort) steht in Langfuse `ticket-llm` als Modell; ohne Tokens kostenneutral.
-- Beim ersten echten Trace prüfen, dass Langfuse `gpt-4.1-mini-2025-04-14` einem Preis zuordnet. Ein Test sichert ab,
-  dass der Request kein `model` enthält.
+- Am 13.11. lokal geprüft: Langfuse ordnet `gpt-4.1-mini-2025-04-14` einem Preis zu (≈ 0,00082 $ pro Ticket,
+  Extractor teuerster Schritt). Ein Test sichert ab, dass der Request kein `model` enthält.
 
 ## 2026-11-08 — Container Apps im Standardmodus (Workload Profiles) statt Express
 

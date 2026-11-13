@@ -139,10 +139,15 @@ In einem zweiten Terminal:
 
 ```powershell
 Invoke-RestMethod http://localhost:8000/ready
-Invoke-RestMethod http://localhost:8000/analyze -Method Post -ContentType "application/json" `
+$body = '{"ticket_id": "T-1", "raw_text": "Seit dem Update startet die App nicht mehr, ich kann nicht arbeiten."}'
+Invoke-RestMethod http://localhost:8000/analyze -Method Post -ContentType "application/json; charset=utf-8" `
   -Headers @{ "X-API-Key" = "lokal-test" } `
-  -Body '{"ticket_id": "T-1", "raw_text": "Seit dem Update startet die App nicht mehr, ich kann nicht arbeiten."}'
+  -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
 ```
+
+Den Body immer als UTF-8-Bytes schicken: Windows PowerShell 5.1 kodiert einen String-Body nicht als UTF-8, bei
+Umlauten oder ß antwortet FastAPI dann mit „There was an error parsing the body“. Das gilt für alle
+`Invoke-RestMethod`-Beispiele in dieser Datei.
 
 ## Eval gegen das Azure-Modell (lokal)
 
@@ -272,7 +277,8 @@ az containerapp ingress enable --name ca-ticket-pipeline --resource-group rg-tic
 $url = "https://" + (az containerapp show --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --query properties.configuration.ingress.fqdn --output tsv)
 Invoke-RestMethod "$url/ready"
 $key = az keyvault secret show --vault-name kv-ticketpipe-sa --name api-key --query value --output tsv
-Invoke-RestMethod "$url/analyze" -Method Post -ContentType "application/json" -Headers @{ "X-API-Key" = $key } -Body '{"ticket_id": "T-1", "raw_text": "Seit dem Update startet die App nicht mehr, ich kann nicht arbeiten."}'
+$body = '{"ticket_id": "T-1", "raw_text": "Seit dem Update startet die App nicht mehr, ich kann nicht arbeiten."}'
+Invoke-RestMethod "$url/analyze" -Method Post -ContentType "application/json; charset=utf-8" -Headers @{ "X-API-Key" = $key } -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
 ```
 
 ### n8n an die Cloud anschließen
@@ -493,13 +499,19 @@ $body = '{"ticket_id": "ALARM-TEST-1", "raw_text": "Seit dem Update startet die 
 # (1) Deployment-Namen auf einen nicht existierenden Wert setzen
 az containerapp update --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --set-env-vars AZURE_FAST_DEPLOYMENT=gibt-es-nicht
 # (2) Ein Ticket schicken (Antwort 200 mit Fallback-Werten; im Log 2 LLM_FAILURE-Zeilen)
-Invoke-RestMethod "$url/analyze" -Method Post -ContentType "application/json" -Headers @{ "X-API-Key" = $key } -Body $body
-# (3) SOFORT zurücksetzen
-az containerapp update --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --set-env-vars AZURE_FAST_DEPLOYMENT=ticket-llm
+Invoke-RestMethod "$url/analyze" -Method Post -ContentType "application/json; charset=utf-8" -Headers @{ "X-API-Key" = $key } -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
+# (3) SOFORT zurücksetzen: Variable entfernen (existierte vorher nicht; ohne sie nimmt der Code ticket-llm)
+az containerapp update --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --remove-env-vars AZURE_FAST_DEPLOYMENT
+# (3b) Warten, bis die neueste Revision 100 % Verkehr hat
+az containerapp revision list --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --query "[].{name:name, active:properties.active, traffic:properties.trafficWeight, created:properties.createdTime}" --output table
 # (4) Prüfen, dass alles wieder läuft: /ready und ein zweites Ticket mit echter Kategorie statt Fallback
 Invoke-RestMethod "$url/ready"
-Invoke-RestMethod "$url/analyze" -Method Post -ContentType "application/json" -Headers @{ "X-API-Key" = $key } -Body $body.Replace("ALARM-TEST-1", "ALARM-TEST-2")
+Invoke-RestMethod "$url/analyze" -Method Post -ContentType "application/json; charset=utf-8" -Headers @{ "X-API-Key" = $key } -Body ([System.Text.Encoding]::UTF8.GetBytes($body.Replace("ALARM-TEST-1", "ALARM-TEST-2")))
 ```
+
+`az containerapp update` kehrt zurück, bevor die neue Revision Verkehr bekommt (gemessen: ca. 1 Minute). Vor dem
+Kontrollticket mit `az containerapp revision list` prüfen, dass die neueste Revision 100 % Verkehr hat, sonst
+antwortet noch die alte Revision mit dem falschen Deployment.
 
 5. Auf die Alarm-Mail warten: bis ca. 20 min (Fenster plus Log-Latenz).
 6. Auf die Entwarnung warten: kommt, sobald ein 15-min-Fenster ohne `LLM_FAILURE` ausgewertet wurde.
