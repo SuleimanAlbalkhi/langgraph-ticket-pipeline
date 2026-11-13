@@ -4,8 +4,10 @@ import logging
 
 from langgraph.graph import StateGraph
 
+from app.config import get_settings
 from app.graph.state import GraphState
 from app.models.ticket import TicketAnalysis, TicketCategory, TicketInput, UrgencyLevel
+from app.observability import TICKET_REF_KEY, get_callbacks, hash_ticket_id, source_tag
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +57,19 @@ def _initial_state(ticket: TicketInput) -> GraphState:
     }
 
 
+def _run_config(ticket: TicketInput) -> dict:
+    """Tracing-Konfiguration für einen Lauf. Zentral hier statt in den Nodes: LangChain
+    reicht die Callbacks über den Kontext an jedes llm.ainvoke() weiter, auch durch
+    asyncio.gather/wait_for. Ohne Tracing ist callbacks leer, der Lauf bleibt unverändert."""
+    metadata: dict = {"langfuse_tags": [get_settings().llm_provider, source_tag(ticket.source)]}
+    ticket_ref = hash_ticket_id(ticket.ticket_id)
+    if ticket_ref is not None:
+        metadata[TICKET_REF_KEY] = ticket_ref
+    return {"callbacks": get_callbacks(), "run_name": "ticket-analysis", "metadata": metadata}
+
+
 async def run_graph(ticket: TicketInput) -> TicketAnalysis:
-    final_state = await get_app().ainvoke(_initial_state(ticket))
+    final_state = await get_app().ainvoke(_initial_state(ticket), config=_run_config(ticket))
 
     # Defensive Enum-Coercion am Egress: Falls ein Node trotz Fallback einen
     # ungültigen Wert geschleust hat, snappt coerce() ihn auf den Default — kein Crash.

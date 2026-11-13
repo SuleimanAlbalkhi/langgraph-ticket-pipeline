@@ -11,6 +11,7 @@ from fastapi.security import APIKeyHeader
 
 from app.config import get_settings
 from app.models.ticket import TicketAnalysis, TicketInput
+from app.observability import log_tracing_status, shutdown_tracing
 
 # force=True entfernt bereits vorhandene Handler (z.B. von Uvicorn) am
 # Root-Logger, bevor unserer gesetzt wird — verhindert doppelte Log-Zeilen.
@@ -33,8 +34,11 @@ async def lifespan(app: FastAPI):
     logger.info("LLM-Timeout:  %.0fs", settings.llm_timeout)
     logger.info("Max. parallele Analysen: %d", settings.max_concurrent_analyses)
     logger.info("API-Key-Schutz: %s", "an" if settings.api_key else "AUS (API_KEY nicht gesetzt)")
+    log_tracing_status()
     yield
     logger.info("Service wird beendet.")
+    # Gepufferte Spans senden, bevor der Prozess endet (Container Apps skaliert auf 0).
+    shutdown_tracing()
 
 
 app = FastAPI(
