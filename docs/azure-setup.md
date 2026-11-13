@@ -483,38 +483,61 @@ az monitor scheduled-query create --name alert-llm-failure --resource-group rg-t
 `az monitor scheduled-query` ist eine CLI-Erweiterung und wird beim ersten Aufruf automatisch installiert.
 Die Action Group schickt sofort eine Bestätigungs-Mail („added to action group“).
 
+E-Mail-Empfänger müssen innerhalb von 30 Minuten nach dem Speichern per Bestätigungsmail verifiziert werden, sonst
+stellt Azure nichts zu. Beim Anlegen per CLI die Bestätigungsmail im Postfach (auch Spam) suchen; Absender
+`azure-noreply@microsoft.com`, `azureemail-noreply@microsoft.com`, `alerts-noreply@mail.windowsazure.com`. Prüfen
+mit „Test action group“ → Sample type „Log alert V2“.
+
 **Im Portal:** Monitor → Alerts → Action groups → + Create (Notifications: Email); Monitor → Alerts → + Create → Alert rule →
 Scope: Log-Analytics-Arbeitsbereich → Condition: Custom log search (Abfrage, Measurement Count, Threshold > 0,
 Frequency 15 min, Lookback 15 min) → Actions: Action Group → Details: Severity 2, „Automatically resolve alerts“ an
 
 ### 7. Alarm-Test Schritt B: echter Fehler
 
-Prüft die ganze Kette inklusive Entwarnung. Genau diese Reihenfolge:
+Prüft die ganze Kette inklusive Entwarnung. Eine neu angelegte Regel erst eine Weile laufen lassen (bei uns: Test
+3 Minuten nach dem Anlegen wurde nicht erfasst).
+
+`az containerapp update` kehrt zurück, bevor die neue Revision Verkehr bekommt (gemessen: ca. 1 Minute). Zwei
+Hilfsfunktionen: `Wait-Revision` wartet, bis die neueste Revision bereit ist, `Send-Ticket` schickt ein Testticket.
 
 ```powershell
 $url = "https://" + (az containerapp show --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --query properties.configuration.ingress.fqdn --output tsv)
 $key = az keyvault secret show --vault-name kv-ticketpipe-sa --name api-key --query value --output tsv
-$body = '{"ticket_id": "ALARM-TEST-1", "raw_text": "Seit dem Update startet die App nicht mehr, ich kann nicht arbeiten."}'
 
-# (1) Deployment-Namen auf einen nicht existierenden Wert setzen
-az containerapp update --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --set-env-vars AZURE_FAST_DEPLOYMENT=gibt-es-nicht
-# (2) Ein Ticket schicken (Antwort 200 mit Fallback-Werten; im Log 2 LLM_FAILURE-Zeilen)
-Invoke-RestMethod "$url/analyze" -Method Post -ContentType "application/json; charset=utf-8" -Headers @{ "X-API-Key" = $key } -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
-# (3) SOFORT zurücksetzen: Variable entfernen (existierte vorher nicht; ohne sie nimmt der Code ticket-llm)
-az containerapp update --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --remove-env-vars AZURE_FAST_DEPLOYMENT
-# (3b) Warten, bis die neueste Revision 100 % Verkehr hat
-az containerapp revision list --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --query "[].{name:name, active:properties.active, traffic:properties.trafficWeight, created:properties.createdTime}" --output table
-# (4) Prüfen, dass alles wieder läuft: /ready und ein zweites Ticket mit echter Kategorie statt Fallback
-Invoke-RestMethod "$url/ready"
-Invoke-RestMethod "$url/analyze" -Method Post -ContentType "application/json; charset=utf-8" -Headers @{ "X-API-Key" = $key } -Body ([System.Text.Encoding]::UTF8.GetBytes($body.Replace("ALARM-TEST-1", "ALARM-TEST-2")))
+function Wait-Revision {
+  do { Start-Sleep 10; $s = az containerapp show --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --query "[properties.latestRevisionName, properties.latestReadyRevisionName]" --output tsv; Write-Host "warte... $($s -join ' / ')" } while ($s[0] -ne $s[1])
+}
+function Send-Ticket($id) {
+  $body = @{ ticket_id = $id; source = "api"; raw_text = "Hallo, mein Drucker druckt seit heute nur leere Seiten. Gruss" } | ConvertTo-Json
+  Invoke-RestMethod -Method Post -Uri "$url/analyze" -Headers @{ "X-API-Key" = $key } -ContentType "application/json; charset=utf-8" -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 180
+}
 ```
 
-`az containerapp update` kehrt zurück, bevor die neue Revision Verkehr bekommt (gemessen: ca. 1 Minute). Vor dem
-Kontrollticket mit `az containerapp revision list` prüfen, dass die neueste Revision 100 % Verkehr hat, sonst
-antwortet noch die alte Revision mit dem falschen Deployment.
+Ablauf:
 
-5. Auf die Alarm-Mail warten: bis ca. 20 min (Fenster plus Log-Latenz).
+```powershell
+# (1) Deployment-Namen auf einen nicht existierenden Wert setzen und warten, bis die Revision bereit ist
+az containerapp update --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --set-env-vars AZURE_FAST_DEPLOYMENT=gibt-es-nicht
+Wait-Revision
+Start-Sleep 30
+# (2) Ticket schicken: erwartet Kategorie unknown (Fallback); im Log 2 LLM_FAILURE-Zeilen
+Send-Ticket "ALARM-TEST-3"
+# (3) SOFORT zurücksetzen: Variable entfernen (existierte vorher nicht; ohne sie nimmt der Code ticket-llm)
+az containerapp update --name ca-ticket-pipeline --resource-group rg-ticket-pipeline --remove-env-vars AZURE_FAST_DEPLOYMENT
+Wait-Revision
+Start-Sleep 30
+# (4) Kontrollticket: erwartet echte Kategorie statt Fallback
+Send-Ticket "ALARM-TEST-4"
+```
+
+5. Nach ca. 5–20 min unter Monitor → Alerts prüfen, dass der Alarm auf „Fired“ steht; im Reiter History muss
+   „Action group triggered“ stehen.
 6. Auf die Entwarnung warten: kommt, sobald ein 15-min-Fenster ohne `LLM_FAILURE` ausgewertet wurde.
+
+**Bekannte Einschränkung:** Die Zustellung an Empfänger scheitert in unserem Tenant. E-Mail und Azure-App-Push kommen
+nicht an, die Bestätigungsmail für E-Mail-Empfänger kam nie an, und „Test action group“ bricht mit „There was a
+problem completing this test“ ab (vermutlich Einschränkung im Studenten-Tenant). Regel und Action Group funktionieren
+nachweislich; deshalb den Alarm im Portal prüfen statt auf die Mail zu warten. Details in [DECISIONS.md](../DECISIONS.md).
 
 **Wichtig:** `/ready` prüft das Modell nicht (bewusst, sonst kostet jede Probe Tokens). Ein vergessenes Zurücksetzen
 in Schritt 3 fällt nur durch den Alarm auf.
