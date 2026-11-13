@@ -89,8 +89,18 @@ Deployment-Namen (`AZURE_FAST_DEPLOYMENT`), sofort zurückgesetzt, Warten auf Al
 - Der echte Fehler prüft die ganze Kette inklusive Entwarnung.
 - Am 13.11. in der Cloud gemessen: Ein Ticket bei ausgefallenem Modell erzeugt genau 2 `LLM_FAILURE`-Zeilen
   (Classifier, Extractor; Risk Guard übersprungen). Die Zeilen waren nach wenigen Minuten im Arbeitsbereich abfragbar.
+- Am 13.11. in der Cloud nachgewiesen: Fehler über falschen Deployment-Namen um ca. 21:04 → Alarm Fired 21:08
+  (Wert 2 > 0, Fenster 20:52–21:07), Action Group `ag-ticket-pipeline` ausgelöst. Ca. 4 Minuten vom Fehler bis zum Alarm.
+- Erster Versuch um 18:47 löste nicht aus: Die Regel war erst um 18:44 angelegt und hatte noch nicht ausgewertet.
+  Neue Log-Alarmregeln vor einem Test eine Weile laufen lassen.
 
 **Konsequenzen:** `/ready` prüft das Modell nicht; ein vergessenes Zurücksetzen fällt nur durch den Alarm auf.
+
+**Bekannte Einschränkung:** Die Zustellung an Empfänger scheitert. E-Mail (Uni- und private Adresse) und
+Azure-App-Push kommen nicht an; die von Azure verlangte Bestätigungsmail für E-Mail-Empfänger (Einmalcode,
+30-Minuten-Frist) kam nie an, und „Test action group“ bricht für beide Kanäle mit „There was a problem completing
+this test“ ab. Vermutete Ursache: Einschränkung im Studenten-Tenant. Regel und Action Group funktionieren
+nachweislich; offen ist nur die Zustellung.
 
 ## 2026-11-13 — Kein `model=` an `AzureChatOpenAI`
 
