@@ -1,0 +1,16 @@
+{
+  "run_name": "holdout-azure",
+  "note": "Holdout einmalig: Cloud gpt-4.1-mini + e11 gegen holdout-final",
+  "started_at": "2026-11-15T11:27:36+00:00",
+  "finished_at": "2026-11-15T11:28:47+00:00",
+  "model": "gpt-4.1-mini",
+  "hardware": "Azure Container App + Azure OpenAI gpt-4.1-mini GlobalStandard (France Central), 100k TPM",
+  "git_commit": "27de201f6a5a74a3bce14a82b11c3a3ac01f006e",
+  "code_commit": "ade0826c48f277268d30feb5c12a4f1de3384151",
+  "tickets_path": "eval/holdout/tickets.jsonl",
+  "image_id": null,
+  "image_created": null,
+  "base_url": "https://ca-ticket-pipeline.graysky-bada954d.francecentral.azurecontainerapps.io",
+  "deployed_git_sha": "ade0826c48f277268d30feb5c12a4f1de3384151",
+  "n_tickets": 30
+}
