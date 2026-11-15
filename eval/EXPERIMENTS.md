@@ -126,3 +126,27 @@ Ab hier läuft der Service mit `LLM_PROVIDER=azure`, Deployment `ticket-llm` = g
 - **Änderung:** Organisationsfilter erkennt „abteilung“ auch als Wortende (`\w*abteilung`), damit Komposita wie „Versandabteilung“ als Signatur gelten; „personalabteilung“ als Einzelwort entfällt (abgedeckt).
 - **Entscheidung:** angenommen ohne Lauf, wie E9 — deterministische Nachbearbeitung, im Lauf nicht messbar, weil das Modell den Namen in e11 ohnehin nicht geliefert hat.
 - **Prüfung:** zwei neue Unit-Tests (Versandabteilung, Personalabteilung); keiner der 25 Kundennamen in den Dev-Labels trifft den erweiterten Filter.
+
+## holdout-azure — Vorregistrierung (2026-11-15)
+
+**Einmaliger Lauf, Ergebnis wird unverändert übernommen.** Eingetragen und committet vor dem Lauf; danach keine Änderung an Prompts, Code oder Daten wegen des Ergebnisses.
+
+- **Gemessen:** Cloud-Stand gpt-4.1-mini (Deployment `ticket-llm`, GlobalStandard, France Central) mit Prompt-Stand e11 (dazu e12 und der HOLD-014-Fix in der Nachbearbeitung), ausgeführt in der Container App `ca-ticket-pipeline`. **Modell und Prompt werden zusammen gemessen;** der Lauf trennt nicht, welcher Anteil eines Unterschieds vom Modellwechsel und welcher von e11 kommt.
+- **Vergleich:** gegen den vorhandenen lokalen Holdout-Wert `holdout-final` (qwen2.5:3b, App-Code `0bcbf8f`, 30.10.2026). Kein zweiter Cloud-Lauf, der Holdout wird genau einmal benutzt.
+- **Hypothese (neutral):** Auf den 30 Holdout-Tickets unterscheidet sich der Cloud-Stand vom lokalen Stand in Kategorie, Urgency, Risk Recall/Precision, Name und Latenz. Richtung und Größe sind offen; die Dev-Gewinne von azure-dev/e11 müssen sich nicht übertragen.
+- **Ziel:** Cloud-URL mit `--base-url` und `--verify-via-ready`, 30 Tickets aus `eval/holdout/tickets.jsonl`, Laufname `holdout-azure`.
+- **Erwarteter `/ready`-SHA:** `ade0826c48f277268d30feb5c12a4f1de3384151` (Merge von PR #7, letzter Deploy von `main`). Dieser Vorregistrierungs-Commit liegt nur auf `azure-deploy` und wird nicht deployt; der Lauf bekommt deshalb `--code-commit ade0826`.
+- **`LLM_FAILURE`:** Jede Zeile im Lauf wird gezählt (Log-Analytics-Abfrage über das Laufzeitfenster), nicht herausgefiltert. Betroffene Tickets bleiben mit ihrer Fallback-Antwort in der Auswertung.
+- **Vergleichsbasis (Regel):** Fehlt ein Ticket wegen eines Ausfalls, zählt es mit 30 als Basis und gilt als falsch; wurde es bewusst ausgeschlossen, ist der Hauptvergleich auf 29 und die Cloud wird zusätzlich auf 30 ausgewiesen. HOLD-014 ist ein **Ausfall** (HTTP 500 durch den Listen-Fehler im Egress, `eval/runs/holdout-final/RESULTS.md`), kein bewusster Ausschluss. Basis ist daher **30**, HOLD-014 zählt lokal als falsch.
+  - **Grund:** Ein Ausfall ist ein Ergebnis des gemessenen Stands. Ihn herauszurechnen hieße, den lokalen Stand besser darzustellen, als er auf diesen Daten war.
+  - **Umsetzung je Metrik:** Bei Kategorie, Urgency und „Name richtig“ ist der Ausfall ein Fehltreffer. Bei Risk Recall, Precision und „Name erfunden“ zählt er nur, wenn das Ticket dort einen Fehler erzeugt hätte. Ein Ausfall eskaliert nichts und erfindet keinen Namen. HOLD-014 ist kein Risiko-Ticket (alle 7 Risiko-Tickets liegen unter den 29 ausgewerteten), Recall und Precision bleiben lokal also gleich.
+  - **Offen bis nach dem Lauf:** Ob HOLD-014 einen Kundennamen trägt, steht nur in den Holdout-Labels, die vorher nicht gelesen werden. Der Namens-Nenner wird aus dem Cloud-Report übernommen (14 + 15 → 15 + 15 oder 14 + 16). Lokal gilt dann 12/15 bzw. 0/16.
+  - Latenz lokal bleibt der Median der 29 Antworten; die Anfrage mit HTTP 500 hat kein Ergebnis.
+  - Die Cloud wird auf allen 30 ausgewertet. Fällt dort ein Ticket aus, gilt es nach derselben Regel als falsch.
+- **Latenz:** lokal auf GTX 1050 Ti (Laptop) im Docker-Container gemessen, Cloud einschließlich Netzweg vom Eval-Rechner zur Container App; die Werte vergleichen Betriebsarten, nicht Modelle allein.
+- **Kosten pro Ticket:** Langfuse-Schätzung nach Listenpreis, gpt-4.1-mini, Stand 11/2026: Summe *Total Cost* der Traces `ticket-analysis` (Environment `production`, Laufzeitfenster) ÷ Anzahl Traces.
+
+| | Kategorie | Urgency | Risk Recall | Risk Precision | Name richtig | Name erfunden | Latenz Median / p95 | `LLM_FAILURE` | Kosten / Ticket |
+|---|---|---|---|---|---|---|---|---|---|
+| holdout-final (lokal, qwen2.5:3b, `0bcbf8f`), Basis 30, HOLD-014 falsch | 23/30 (77 %) | 14/30 (47 %) | 7/7 (100 %) | 7/9 (78 %) | 12/15 oder 12/14 (nach Lauf) | 0/15 oder 0/16 (nach Lauf) | 16.8 / 20.6 s (29 Antworten) | nicht erhoben | – (on-prem) |
+| holdout-azure (Cloud, gpt-4.1-mini + e11, `ade0826`) | | | | | | | | | |
