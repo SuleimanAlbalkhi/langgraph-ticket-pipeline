@@ -3,6 +3,72 @@
 Architektur- und Betriebsentscheidungen mit Begründung, neueste zuerst. Experimente zur Modellqualität
 stehen in `eval/EXPERIMENTS.md`.
 
+## 2026-11-15 — Fehlermeldungen von LLM-Aufrufen erscheinen trotz Masking in Langfuse
+
+**Entscheidung:** Die Fehlermeldung einer gescheiterten Generation (Status-Message) bleibt in Langfuse sichtbar. Der
+Masking-Hook wird dafür nicht erweitert und nicht eingeschränkt.
+
+**Befund (geprüft am 15.11., langfuse 4.18.0):**
+- Das Attribut `langfuse.observation.status_message` steht **nicht** auf der Allowlist und wird gelöscht
+  (`test_masking_allowlist`).
+- Der Callback-Handler setzt dieselbe Meldung (`str(error)`) zusätzlich als OpenTelemetry-Span-Status
+  (`set_status(Status(StatusCode.ERROR, description=...))`). Der Span-Status ist kein Attribut, `mask_otel_spans`
+  sieht ihn nicht. Langfuse übernimmt ihn als Status-Message.
+- Nachweis mit echten Daten: Die beiden Generations aus dem Alarm-Test vom 13.11. (20:03 UTC, Environment
+  `production`) zeigen in Langfuse `Error code: 404 - {'error': {'type': 'invalid_request_error', 'code':
+  'DeploymentNotFound', 'message': 'The API deployment for this resource does not exist. …'}}`, ohne Ticketinhalt.
+- Die Aussage im Eintrag vom 13.11. („Fehlertexte (`status_message`) gehen nicht raus“) gilt damit nur für das
+  Attribut, nicht für die sichtbare Meldung.
+
+**Begründung:** Ohne die Meldung wäre ein Ausfall in Langfuse nur als `ERROR` ohne Ursache zu sehen. Bei
+Azure-OpenAI-Fehlern wie `DeploymentNotFound`, 401/403 oder 429 besteht die Meldung aus HTTP-Status, Fehlercode und
+festem Text von Azure; die Anfrage selbst wird nicht zurückgegeben.
+
+**Content-Filter (geprüft, nichts geändert):**
+- Prompt gefiltert: HTTP 400. Laut Azure-Doku („Content filtering for Microsoft Foundry Models (classic)“, Stand
+  19.10.2026) enthält der Fehler nur `message`, `type`, `param` (fester Wert `"prompt"`), `code` (`content_filter`)
+  und `status`, keinen Eingabetext. Die Doku-Beispiele nutzen die ältere Completions-Form; eine echte
+  Chat-Completions-Antwort kann zusätzlich Kategorien und Schweregrade des Filters enthalten. **Nicht live
+  getestet**, dafür müsste ein Ticket den Filter auslösen.
+- Output gefiltert: keine Exception, sondern HTTP 200 mit `finish_reason: content_filter` und leerem Inhalt. Im
+  Code wird daraus `LLMFailure.PARSE`. Das JSON-Parsing läuft außerhalb von LangChain, der Span bekommt dabei
+  keinen Fehlertext.
+- Timeouts (`asyncio.wait_for`) brechen den Aufruf ab, ohne dass die Meldung Inhalt trägt.
+
+**Konsequenzen:**
+- Ändert ein SDK-Update den Fehlerpfad oder kommt ein Anbieter hinzu, dessen Fehlermeldungen die Anfrage
+  zurückgeben, landet dieser Text ungefiltert in Langfuse. Vor einem Wechsel eine Fehler-Generation in Langfuse
+  ansehen.
+- Unabhängig davon schreibt `invoke_json()` die Meldung auch ins Container-Log (`LLM-Fehler nach …: <exc>`).
+
+## 2026-11-15 — Holdout-Lauf in der Cloud (E1–E4)
+
+**Entscheidungen (Suleiman):**
+- **E1 Ziel:** Der Holdout läuft gegen die Cloud-URL der Container App mit `--base-url` und `--verify-via-ready`,
+  nicht gegen den lokalen Service im Azure-Modus.
+- **E2 Vergleich:** Genau ein Cloud-Lauf (gpt-4.1-mini + Prompt-Stand e11) gegen den vorhandenen lokalen Wert
+  `holdout-final`. Der Holdout wird einmal benutzt. Modell und Prompt werden zusammen gemessen, das steht beim
+  Ergebnis.
+- **E3 Vorregistrierung:** Messgrößen, Vergleichsbasis und erwarteter `/ready`-SHA stehen vor dem Lauf in
+  `eval/EXPERIMENTS.md`, mit dem Satz „einmaliger Lauf, Ergebnis wird unverändert übernommen“, und sind vor dem
+  Lauf committet (`27de201`). Vergleichsbasis 30 Tickets; ein Ausfall zählt als falsch (HOLD-014 lokal).
+- **E4 Kosten:** Durchschnitt über die 30 Holdout-Traces aus Langfuse, beschriftet als Langfuse-Schätzung nach
+  Listenpreis, gpt-4.1-mini, Stand 11/2026.
+
+**Begründung:** Ein zweiter Lauf oder eine Auswahl unter mehreren Läufen würde den Holdout zum Dev-Set machen. Die
+Cloud-URL misst den Stand, der tatsächlich ausgeliefert wird (Image aus ghcr.io, Managed Identity, Netzweg).
+
+**Konsequenzen:**
+- Ergebnis am 15.11.: Kategorie 26/30, Urgency 27/30, Risk 7/7 bei 7/7 Precision, Name 15/15, Latenz 2.2 / 2.9 s,
+  0 `LLM_FAILURE`, 0.000813 USD pro Ticket (Details in `eval/EXPERIMENTS.md`).
+- Der Lauf trennt nicht, welcher Anteil vom Modell und welcher von e11 kommt.
+- Der Vorregistrierungs-Commit wird nicht deployt (Deploy nur von `main`). Der Lauf brauchte deshalb
+  `--code-commit` mit dem deployten SHA.
+- `scripts/run-eval.ps1` deckt diesen Fall nicht ab (fest `localhost`, Dev-Set, lokaler API-Key); die Schritte
+  wurden von Hand ausgeführt, mit derselben `finally`-Rückstellung auf 10k TPM.
+- Der alte Langfuse-Endpunkt `GET /api/public/traces` antwortet mit 410 (Abschaltung 16.11.2026 laut Langfuse).
+  Kosten werden über `GET /api/public/v2/observations` je `traceId` summiert oder in der Langfuse-UI abgelesen.
+
 ## 2026-11-13 — Tracing mit Langfuse: Callback zentral in `run_graph()`, Inhalte standardmäßig maskiert
 
 **Entscheidung:** Der Langfuse-Callback-Handler wird zentral in `run_graph()` über `config={"callbacks": [...]}`
@@ -91,8 +157,10 @@ Deployment-Namen (`AZURE_FAST_DEPLOYMENT`), sofort zurückgesetzt, Warten auf Al
   (Classifier, Extractor; Risk Guard übersprungen). Die Zeilen waren nach wenigen Minuten im Arbeitsbereich abfragbar.
 - Am 13.11. in der Cloud nachgewiesen: Fehler über falschen Deployment-Namen um ca. 21:04 → Alarm Fired 21:08
   (Wert 2 > 0, Fenster 20:52–21:07), Action Group `ag-ticket-pipeline` ausgelöst. Ca. 4 Minuten vom Fehler bis zum Alarm.
-- Erster Versuch um 18:47 löste nicht aus: Die Regel war erst um 18:44 angelegt und hatte noch nicht ausgewertet.
-  Neue Log-Alarmregeln vor einem Test eine Weile laufen lassen.
+  Resolved 21:54, Action Group auch bei der Entwarnung ausgelöst.
+- Früherer Testlauf: 2 Tickets um 18:47/18:48 (Revision 0000007, je 2 `LLM_FAILURE`-Zeilen) → Alarm Fired 18:53,
+  danach automatisch Resolved. Die Regel war um 18:44 angelegt und hat den Fehler mit ihrer ersten Auswertung erfasst.
+  *(Korrigiert am 15.11. nach Prüfung im Portal; vorher stand hier, dieser Versuch habe nicht ausgelöst.)*
 
 **Konsequenzen:** `/ready` prüft das Modell nicht; ein vergessenes Zurücksetzen fällt nur durch den Alarm auf.
 

@@ -27,3 +27,4 @@ Eine Zeile pro Lauf, sortiert nach Startzeit, getrennt nach Ticket-Datei. Spalte
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | holdout-baseline | 2026-10-30 | `da59602` | Holdout-Schlusslauf: App-Code Baseline da59602 (git worktree) | 29 / 1 | 23 von 29 (79 %) | 15 von 29 (52 %) | 7 von 7 (100 %) | 7 von 9 (78 %) | — | HOLD-007, HOLD-015 | 12 von 14 (86 %) | 0 von 15 (0 %) | 1.00 / 1.00 | 0 | 21.0 / 25.6 s |
 | holdout-final | 2026-10-30 | `0bcbf8f` | Holdout-Schlusslauf: App-Code Gewinnerstand 0bcbf8f | 29 / 1 | 23 von 29 (79 %) | 14 von 29 (48 %) | 7 von 7 (100 %) | 7 von 9 (78 %) | — | HOLD-007, HOLD-015 | 12 von 14 (86 %) | 0 von 15 (0 %) | 1.00 / 1.00 | 0 | 16.8 / 20.6 s |
+| holdout-azure | 2026-11-15 | `ade0826` | Holdout einmalig: Cloud gpt-4.1-mini + e11 gegen holdout-final | 30 / 0 | 26 von 30 (87 %) | 27 von 30 (90 %) | 7 von 7 (100 %) | 7 von 7 (100 %) | — | — | 15 von 15 (100 %) | 0 von 15 (0 %) | 1.00 / 1.00 | 0 | 2.2 / 2.9 s |

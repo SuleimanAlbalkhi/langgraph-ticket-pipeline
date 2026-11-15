@@ -339,6 +339,14 @@ Latenz, Modell, Tokens und Kosten. Ticketinhalte werden vor dem Export maskiert 
 `app/observability.py`). Ein Log-Suchalarm meldet Modellausfälle (`LLM_FAILURE`) per E-Mail. Entscheidungen und
 Begründungen: siehe `DECISIONS.md`.
 
+![Alarm-Übersicht: alert-llm-failure, Fired 21:08, Wert 2 > 0, Resolved](images/alert-summary.png)
+
+Die Fehlermeldung einer gescheiterten Generation bleibt trotz Masking sichtbar: Das SDK überträgt sie als
+Span-Status, den der Masking-Hook nicht erfasst. Bei Azure-OpenAI-Fehlern enthält sie keinen Ticketinhalt
+(Prüfung und Content-Filter-Fall in `DECISIONS.md`, 15.11.). Beispiel aus dem Alarm-Test, Input/Output maskiert:
+
+![Langfuse-Trace eines Modellausfalls: Generation mit Level ERROR und DeploymentNotFound](images/langfuse-trace-failure.png)
+
 ### 1. Langfuse-Projekt
 
 Konto in der Region **EU** (Plan Hobby), Projekt `ticket-pipeline`, dann API Keys anlegen. Den Secret Key zeigt
@@ -494,8 +502,9 @@ Frequency 15 min, Lookback 15 min) → Actions: Action Group → Details: Severi
 
 ### 7. Alarm-Test Schritt B: echter Fehler
 
-Prüft die ganze Kette inklusive Entwarnung. Eine neu angelegte Regel erst eine Weile laufen lassen (bei uns: Test
-3 Minuten nach dem Anlegen wurde nicht erfasst).
+Prüft die ganze Kette inklusive Entwarnung. Eine neu angelegte Regel erst eine Weile laufen lassen: Fehler kurz
+nach dem Anlegen meldet sie erst mit ihrer ersten Auswertung (bei uns: Regel 18:44 angelegt, Fehler 18:47/18:48,
+Fired 18:53).
 
 `az containerapp update` kehrt zurück, bevor die neue Revision Verkehr bekommt (gemessen: ca. 1 Minute). Zwei
 Hilfsfunktionen: `Wait-Revision` wartet, bis die neueste Revision bereit ist, `Send-Ticket` schickt ein Testticket.
@@ -533,6 +542,13 @@ Send-Ticket "ALARM-TEST-4"
 5. Nach ca. 5–20 min unter Monitor → Alerts prüfen, dass der Alarm auf „Fired“ steht; im Reiter History muss
    „Action group triggered“ stehen.
 6. Auf die Entwarnung warten: kommt, sobald ein 15-min-Fenster ohne `LLM_FAILURE` ausgewertet wurde.
+   Gemessen am 13.11. (Ortszeit), zwei Auslösungen, beide automatisch **Resolved**:
+   - **Fired 18:53:** früherer Testlauf, 2 Tickets um 18:47/18:48 in Revision 0000007, je 2 `LLM_FAILURE`-Zeilen
+     (Classifier + Extractor, `reason=error`).
+   - **Fired 21:08, Resolved 21:54:** geplanter Alarm-Test, 1 Ticket um 21:03 in Revision 0000010 (Deployment
+     `gibt-es-nicht`). Action Group `ag-ticket-pipeline` bei Fire und bei Resolve ausgelöst.
+
+   Seitdem kein `LLM_FAILURE` (aktive Revision 0000012); auch der Holdout-Lauf vom 15.11. (30 Tickets) erzeugte keine.
 
 **Bekannte Einschränkung:** Die Zustellung an Empfänger scheitert in unserem Tenant. E-Mail und Azure-App-Push kommen
 nicht an, die Bestätigungsmail für E-Mail-Empfänger kam nie an, und „Test action group“ bricht mit „There was a

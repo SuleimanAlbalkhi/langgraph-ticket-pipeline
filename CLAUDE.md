@@ -4,7 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A hybrid Low-Code + Pro-Code system for backoffice ticket processing. **n8n** (low-code) handles webhooks, routing, and integrations; **FastAPI + LangGraph** (pro-code) handles the reasoning. Inference runs on-premise via **Ollama** (`qwen2.5:3b`) — no external API calls, DSGVO-compliant by design. The codebase comments and LLM prompts are in German.
+A hybrid Low-Code + Pro-Code system for backoffice ticket processing. **n8n** (low-code) handles webhooks, routing, and integrations; **FastAPI + LangGraph** (pro-code) handles the reasoning. The codebase comments, internal docs and LLM prompts are in German; `README.md` is in English.
+
+Two run modes, selected by `LLM_PROVIDER` (same pipeline code):
+- **local** (`ollama`, default): `qwen2.5:3b` via Ollama on the host — no external API calls, DSGVO-compliant by design.
+- **cloud** (`azure`): Azure Container App calling Azure OpenAI `gpt-4.1-mini` (deployment `ticket-llm`, GlobalStandard, France Central) via Managed Identity. **Synthetic data only** — GlobalStandard may process outside the EU. The DSGVO statement applies to the local mode only.
+
+## Working rules
+
+- **Suleiman makes every design decision.** If a task hits a decision that is not settled in the task or in `DECISIONS.md`, stop, present the options with pros and cons, and wait.
+- **If reality deviates from the task** (a script parameter is named differently, a file is missing, a fact does not match), report it and ask — do not quietly solve it another way.
+- Git and Azure commands are run by Suleiman unless he explicitly hands them over in the conversation.
+- `ruff check` must be clean; do not run `ruff format`.
+- Decisions with their reasons go to `DECISIONS.md` (newest first), experiment results to `eval/EXPERIMENTS.md`.
 
 ## Commands
 
@@ -33,9 +45,29 @@ CI (`.github/workflows/ci.yml`) runs ruff, pytest and the Docker build on every 
 
 Ollama is **not** containerized — the FastAPI container reaches the host's Ollama via `host.docker.internal:11434` (see `docker-compose.yml` / `OLLAMA_BASE_URL`). When running FastAPI locally instead, config defaults to `http://localhost:11434`.
 
+CI also has a `deploy` job: only on push to `main`, after green tests, it builds the image, pushes it to ghcr.io tagged with the commit SHA, logs in to Azure via OIDC and updates the Container App, then polls `/ready` until it reports the new SHA. Commits on other branches are never deployed.
+
+### Cloud mode and scripts (from the repo root, PowerShell, after `az login`)
+
+```powershell
+.\scripts\start-azure-service.ps1                # service locally in Azure mode (uvicorn, API_KEY lokal-test, GIT_SHA = HEAD)
+.\scripts\run-eval.ps1 -Name <run> -Note "..."   # dev-set eval against that local service; TPM 100k during the run, 10k afterwards (finally)
+.\scripts\trace-ref.ps1 -TicketId EVAL-001       # ticket ID -> Langfuse ticket_ref (HMAC key read from Key Vault)
+```
+
+`run-eval.ps1` is fixed to `localhost`, the dev set and the local API key. A run against the deployed Container App uses `run_eval.py --base-url https://<fqdn> --verify-via-ready` with `EVAL_API_KEY` from Key Vault; if the checked-out commit is not the deployed one, pass `--code-commit <deployed sha>`. Raise the deployment capacity yourself (and reset it to 10k) as the script does. Full setup: `docs/azure-setup.md`.
+
+Endpoints: `/health` is liveness only; `/ready` checks the config and, in Azure mode, that the identity gets a token (no model call) and returns `git_sha`. `/analyze` requires `X-API-Key` when `API_KEY` is set (always in the cloud).
+
+### Observability (`app/observability.py`)
+
+Langfuse tracing is hooked in centrally in `run_graph()` as a LangChain callback (new handler per request); nodes and `invoke_json()` know nothing about it. Tracing is on only if both Langfuse keys are set. Content is **masked by default** via `mask_otel_spans`: input/output → `[redacted]`, every attribute not on the allowlist is deleted (fail-closed). New attributes stay invisible until added to the allowlist — never loosen it without a decision in `DECISIONS.md`. Error messages of failed generations still reach Langfuse via the OTel span status (see `DECISIONS.md`, 2026-11-15). Environment `local` by default, `production` in the Container App; the ticket ID is sent only as a 16-hex HMAC (`ticket_ref`, key `TICKET_ID_HMAC_KEY`).
+
+Every failed LLM call logs `LLM_FAILURE node=... reason=...` (no ticket content); a Log Analytics alert fires on any such line within 15 min. Each one in an eval run counts as a result, it is never filtered out.
+
 ## Architecture
 
-Request flow: n8n webhook → `POST /analyze` → LangGraph pipeline → Ollama. The single endpoint that matters is `POST /analyze` in `app/main.py`; it delegates to `run_graph()` and converts errors into a generic 500 with a tracking `error_id` (full stacktrace stays in server logs).
+Request flow: n8n webhook → `POST /analyze` → LangGraph pipeline → Ollama (local) or Azure OpenAI (cloud). The single endpoint that matters is `POST /analyze` in `app/main.py`; it delegates to `run_graph()` and converts errors into a generic 500 with a tracking `error_id` (full stacktrace stays in server logs).
 
 ### The LangGraph pipeline (`app/graph/`)
 
@@ -62,9 +94,9 @@ Module layout under `app/graph/`:
 
 ### LLM model tiers
 
-`config.py` defines `ollama_fast_model` (classifier + extractor) and `ollama_smart_model` (risk_guard). Both currently point at `qwen2.5:3b` for GPU reasons, but the per-node routing already exists in code — to use a larger model for risk evaluation, change only the config value, not the nodes.
+`config.py` defines `ollama_fast_model` (classifier + extractor) and `ollama_smart_model` (risk_guard); in Azure mode the same split is `azure_fast_deployment` / `azure_smart_deployment` (both `ticket-llm`). Locally both models are `qwen2.5:3b` for GPU reasons, but the per-node routing already exists in code — to use a larger model for risk evaluation, change only the config value, not the nodes. A model change in Azure is a new deployment, not a code change; `AzureChatOpenAI` gets no `model=` on purpose (`DECISIONS.md`).
 
-Each node builds its `ChatOllama` client as a module-level **singleton** at import time (no per-request setup). All LLM calls go through `llm_utils.invoke_json()` (`asyncio.wait_for` with `settings.ollama_timeout`) and degrade to a safe fallback on timeout/parse failure rather than raising.
+Each node builds its client via `llm_utils.build_json_llm()` as a module-level **singleton** at import time (no per-request setup): `ChatOllama` with `format="json"` or `AzureChatOpenAI` with `response_format=json_object`, Entra ID token provider and SDK retries on 429/5xx. All LLM calls go through `llm_utils.invoke_json()` (`asyncio.wait_for` with `settings.llm_timeout`) and degrade to a safe fallback on timeout/error/parse failure rather than raising.
 
 ### Defense-in-depth validation (`app/models/ticket.py`)
 
@@ -77,14 +109,14 @@ The extractor also runs a **regex deadline post-processor** (`postprocess._DEADL
 
 ## n8n workflow
 
-`n8n-workflows/Ticket-Analysis-Pipeline.json` is the versioned export. A `Switch` splits on `risk_flag` into an Escalation path and a Normal path. The final Slack/Notion delivery nodes are intentionally stubbed as `Set` nodes in this public repo (real delivery needs live credentials that must not be committed); swapping a `Set` for a real integration node is a drop-in change in the editor, no code change.
+`n8n-workflows/Ticket-Analysis-Pipeline.json` is the versioned export of the local workflow; `Ticket-Analysis-Pipeline-Cloud.json` points the webhook workflow (synthetic tickets only) at the Container App and references a Header Auth credential named `Ticket-Pipeline Cloud` (`X-API-Key`) — never put a key into the JSON. A `Switch` splits on `risk_flag` into an Escalation path and a Normal path. The final Slack/Notion delivery nodes are intentionally stubbed as `Set` nodes in this public repo (real delivery needs live credentials that must not be committed); swapping a `Set` for a real integration node is a drop-in change in the editor, no code change.
 
 ## Evaluation
 
 `eval/tickets.jsonl` holds 50 labeled tickets; `eval/run_eval.py` sends them to `POST /analyze`, `eval/report.py` writes the metrics. Hard rules:
 
 - `eval/tickets.jsonl` is never changed.
-- `eval/holdout/` is never read, except for an explicitly ordered final run.
+- **`eval/holdout/` is locked.** It has been used for the local final run (`holdout-final`, 30.10.) and the pre-registered cloud run (`holdout-azure`, 15.11.). It is not read and not run again unless Suleiman explicitly orders it; nothing in prompts, code or data is changed because of a holdout result.
 - One experiment = one change = one full run over all 50 tickets.
 - Every run writes to `eval/runs/<name>/` and never overwrites anything.
 
@@ -94,4 +126,4 @@ Acceptance thresholds, derived from the noise band between `baseline` and `basel
 - Risk flag / customer name: **≥ 1 ticket** counts.
 - No other metric may get worse beyond the same band; risk recall must never drop below 10/11.
 
-Before every run rebuild the image (`docker compose up -d --build fastapi-service`); `run_eval.py` aborts if the image is older than the app code. `eval/compare.py` writes the overview to `eval/runs/COMPARISON.md`.
+Before every local run rebuild the image (`docker compose up -d --build fastapi-service`); `run_eval.py` aborts if the image is older than the app code. Runs against Azure check the commit via `/ready` instead (`--verify-via-ready`). Since `azure-dev` the reference is the cloud model (current winner `e11-risk-anger` + `e12`); the thresholds above were derived for the local model. `eval/compare.py` writes the overview to `eval/runs/COMPARISON.md`.
