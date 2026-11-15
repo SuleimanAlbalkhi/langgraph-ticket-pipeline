@@ -436,8 +436,9 @@ consumer GPU (4 GB VRAM sufficient) and is competent for classification and stru
 so the local mode keeps all data on the host.
 
 The cloud mode shows the other side of the trade-off on synthetic data: a larger hosted model is
-clearly more accurate and about 7× faster on the holdout set (see [Evaluation](#evaluation)), at
-about $0.0008 per ticket. Which side wins for real data is a question of data protection terms and
+clearly more accurate on the holdout set, and much faster in this setup — different hardware and
+network path, so not a like-for-like latency comparison (see [Evaluation](#evaluation)) — at about
+$0.0008 per ticket. Which side wins for real data is a question of data protection terms and
 deployment region, not of code — the pipeline is identical.
 
 ### Why a separate Risk-Guard node with two stages?
